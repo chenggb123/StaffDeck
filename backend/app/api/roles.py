@@ -59,6 +59,15 @@ class RoleUpdateRequest(BaseModel):
     permissions: list[str] | None = None
 
 
+class RoleUserRead(BaseModel):
+    id: str
+    username: str
+    display_name: str | None = None
+    role: str
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
 def _ensure_role_reader(db: Session, tenant_id: str, current_user: User) -> None:
     """角色列表读守卫:账号管理(需分配角色)或角色权限管理任一权限即可。"""
     ensure_current_user_tenant(tenant_id, current_user)
@@ -91,6 +100,35 @@ def list_roles(
     ensure_builtin_roles(db, tenant_id, commit=True)
     rows = db.exec(select(Role).where(Role.tenant_id == tenant_id).order_by(Role.created_at)).all()
     return [role_read_dict(db, row) for row in rows]
+
+
+@router.get("/{role_id}/users", response_model=list[RoleUserRead])
+def list_role_users(
+    role_id: str,
+    tenant_id: str = Query(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> list[dict]:
+    _ensure_role_reader(db, tenant_id, current_user)
+    role = get_role(db, tenant_id, role_id)
+    if role is None:
+        raise HTTPException(status_code=404, detail="Role not found")
+    rows = db.exec(
+        select(User)
+        .where(User.tenant_id == tenant_id, User.role == role.id)
+        .order_by(User.created_at.desc())
+    ).all()
+    return [
+        {
+            "id": row.id,
+            "username": row.username,
+            "display_name": row.display_name,
+            "role": row.role,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+        }
+        for row in rows
+    ]
 
 
 @router.post("", response_model=RoleRead, status_code=201)

@@ -12,6 +12,7 @@ from app.api.roles import (
     RoleUpdateRequest,
     create_role,
     delete_role,
+    list_role_users,
     list_roles,
     permission_catalog,
     update_role,
@@ -177,6 +178,29 @@ def test_role_lifecycle_guards_duplicate_name_and_assigned_users() -> None:
             "ok": True
         }
         assert db.get(Role, created["id"]) is None
+
+
+def test_role_members_list_is_scoped_to_role() -> None:
+    with _test_session() as db:
+        admin, member = _seed_admin_and_member(db)
+        created = create_role(
+            RoleCreateRequest(
+                tenant_id="tenant_demo", display_name="审计员", permissions=[PERM_OVERSIGHT]
+            ),
+            current_user=admin,
+            db=db,
+        )
+        member.role = created["id"]
+        db.add(member)
+        db.commit()
+
+        rows = list_role_users(
+            created["id"], tenant_id="tenant_demo", current_user=admin, db=db
+        )
+        assert [row["username"] for row in rows] == ["member"]
+        assert [row["username"] for row in list_role_users(
+            MEMBER_ROLE_ID, tenant_id="tenant_demo", current_user=admin, db=db
+        )] == []
 
 
 def test_validate_permission_keys_dedupes_and_rejects_unknown() -> None:

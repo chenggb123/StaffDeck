@@ -38,6 +38,7 @@ import IconSearch from '../assets/icons/search.svg?react';
 import IconTrash from '../assets/icons/trash.svg?react';
 import type { EnterpriseAuthUser } from '../auth';
 import { useClientPagination } from '../hooks/useClientPagination';
+import { passwordComplexityError } from '../lib/password';
 import { StatusBadge } from './scheduled-tasks/StatusBadge';
 
 type EmployeeAccount = {
@@ -160,6 +161,11 @@ export default function AccountsPage({
       notify.error('请填写账号和密码');
       return;
     }
+    const passwordError = passwordComplexityError(password);
+    if (passwordError) {
+      notify.error(passwordError);
+      return;
+    }
     setCreating(true);
     try {
       await api.post('/api/auth/users', {
@@ -181,12 +187,20 @@ export default function AccountsPage({
 
   async function saveEdit() {
     if (!editing) return;
+    const newPassword = draft.password.trim();
+    if (newPassword) {
+      const passwordError = passwordComplexityError(newPassword);
+      if (passwordError) {
+        notify.error(passwordError);
+        return;
+      }
+    }
     setSaving(true);
     try {
       await api.put(`/api/auth/users/${editing.id}`, {
         tenant_id: TENANT_ID,
         display_name: draft.displayName.trim() || editing.username,
-        password: draft.password.trim() || undefined,
+        password: newPassword || undefined,
         role: draft.role,
       });
       notify.success('账号已更新');
@@ -217,6 +231,7 @@ export default function AccountsPage({
 
   function renderActions(row: EmployeeAccount) {
     const isProtected = row.role === 'admin';
+    const isAdminProtected = isProtected && currentUser?.role !== 'admin';
     return (
       <DropdownMenu>
         <DropdownMenuTrigger
@@ -226,7 +241,11 @@ export default function AccountsPage({
           <IconMore className="size-3.5" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className={MENU_CONTENT_CLASS}>
-          <DropdownMenuItem className={MENU_ITEM_CLASS} onSelect={() => openEdit(row)}>
+          <DropdownMenuItem
+            className={MENU_ITEM_CLASS}
+            disabled={isAdminProtected}
+            onSelect={() => openEdit(row)}
+          >
             <IconEdit />
             编辑
           </DropdownMenuItem>
@@ -234,7 +253,7 @@ export default function AccountsPage({
           <DropdownMenuItem
             variant="destructive"
             className={MENU_ITEM_DANGER_CLASS}
-            disabled={isProtected}
+            disabled={isAdminProtected}
             onSelect={() => setDeleteTarget(row)}
           >
             <IconTrash />
@@ -406,6 +425,7 @@ export default function AccountsPage({
         role={createDraft.role}
         onRoleChange={(value) => setCreateDraft((prev) => ({ ...prev, role: value }))}
         passwordLabel="初始密码"
+        passwordHint="至少8位，包含大小写字母、数字和特殊字符"
         onClose={() => setCreateOpen(false)}
         onSubmit={() => void saveCreate()}
       />
@@ -426,6 +446,7 @@ export default function AccountsPage({
         roleDisabled={editing?.id === currentUser?.id}
         passwordLabel="新密码"
         passwordPlaceholder="不修改请留空"
+        passwordHint="留空不修改；至少8位，包含大小写字母、数字和特殊字符"
         onClose={() => setEditing(null)}
         onSubmit={() => void saveEdit()}
       />
@@ -458,6 +479,7 @@ function AccountDialog({
   roleDisabled = false,
   passwordLabel,
   passwordPlaceholder,
+  passwordHint,
   onClose,
   onSubmit,
 }: {
@@ -476,6 +498,7 @@ function AccountDialog({
   roleDisabled?: boolean;
   passwordLabel: string;
   passwordPlaceholder?: string;
+  passwordHint?: string;
   onClose: () => void;
   onSubmit: () => void;
 }) {
@@ -516,6 +539,9 @@ function AccountDialog({
               placeholder={passwordPlaceholder}
               onChange={(event) => onPasswordChange(event.target.value)}
             />
+            {passwordHint && (
+              <span className="text-[11px] leading-[16px] text-[#858b9c]">{passwordHint}</span>
+            )}
           </LabeledField>
           <LabeledField label="账号角色">
             <Select

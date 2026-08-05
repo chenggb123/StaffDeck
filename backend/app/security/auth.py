@@ -21,6 +21,22 @@ TOKEN_TTL_SECONDS = 60 * 60 * 24 * 14
 security = HTTPBearer(auto_error=False)
 
 
+def validate_password_complexity(password: str) -> None:
+    """Enforce a minimum password policy for account creation and updates."""
+    if len(password) < 8:
+        raise ValueError("Password must be at least 8 characters")
+    if len(password) > 128:
+        raise ValueError("Password must be at most 128 characters")
+    if not any(char.islower() for char in password):
+        raise ValueError("Password must contain a lowercase letter")
+    if not any(char.isupper() for char in password):
+        raise ValueError("Password must contain an uppercase letter")
+    if not any(char.isdigit() for char in password):
+        raise ValueError("Password must contain a digit")
+    if all(char.isalnum() for char in password):
+        raise ValueError("Password must contain a special character")
+
+
 def hash_password(password: str) -> str:
     salt = os.urandom(16).hex()
     digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 120_000)

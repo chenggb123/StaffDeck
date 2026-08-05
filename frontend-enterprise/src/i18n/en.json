@@ -2145,5 +2145,17 @@
   "删除角色「{1}」？": "Delete role \"{1}\"?",
   "删除前请先将该角色名下的账号改派到其他角色。": "Reassign accounts to another role before deleting this one.",
   "例如 客服主管": "e.g. Support Manager",
-  "选填，说明该角色的职责范围": "Optional; describes the role's responsibilities"
+  "选填，说明该角色的职责范围": "Optional; describes the role's responsibilities",
+  "加载成员失败": "Failed to load members",
+  "查看成员": "View Members",
+  "角色成员": "Role Members",
+  "暂无成员": "No members",
+  "密码至少需要 8 个字符": "Password must be at least 8 characters",
+  "密码不能超过 128 个字符": "Password must be at most 128 characters",
+  "密码需要包含小写字母": "Password must contain a lowercase letter",
+  "密码需要包含大写字母": "Password must contain an uppercase letter",
+  "密码需要包含数字": "Password must contain a digit",
+  "密码需要包含特殊字符": "Password must contain a special character",
+  "至少8位，包含大小写字母、数字和特殊字符": "At least 8 characters with uppercase, lowercase, digits, and special characters",
+  "留空不修改；至少8位，包含大小写字母、数字和特殊字符": "Leave blank to keep unchanged; at least 8 characters with uppercase, lowercase, digits, and special characters"
 }

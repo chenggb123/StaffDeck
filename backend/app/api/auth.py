@@ -10,7 +10,13 @@ from sqlmodel import Session, select
 
 from app.db import get_session
 from app.db.models import User, UserAvatar, utc_now
-from app.security.auth import create_access_token, get_current_user, hash_password, verify_password
+from app.security.auth import (
+    create_access_token,
+    get_current_user,
+    hash_password,
+    validate_password_complexity,
+    verify_password,
+)
 from app.security.permissions import MEMBER_ROLE, PERM_ACCOUNTS, ensure_permission, is_admin_user
 from app.security.rbac import (
     ADMIN_ROLE_ID,
@@ -196,8 +202,13 @@ def create_user(
 ) -> UserRead:
     ensure_permission(db, request.tenant_id, current_user, PERM_ACCOUNTS)
     username = request.username.strip()
-    if not username or not request.password:
+    password = request.password.strip()
+    if not username or not password:
         raise HTTPException(status_code=400, detail="Username and password are required")
+    try:
+        validate_password_complexity(password)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     role = get_role(db, request.tenant_id, request.role)
     if role is None:
         raise HTTPException(status_code=400, detail="Unknown role")
@@ -215,7 +226,7 @@ def create_user(
         username=username,
         display_name=(request.display_name or username).strip()[:80],
         role=role.id,
-        password_hash=hash_password(request.password),
+        password_hash=hash_password(password),
     )
     db.add(user)
     db.commit()
@@ -250,12 +261,20 @@ def update_user(
     user = db.get(User, user_id)
     if not user or user.tenant_id != request.tenant_id:
         raise HTTPException(status_code=404, detail="Account not found")
+    if user.role == ADMIN_ROLE_ID and not user_is_admin(current_user):
+        raise HTTPException(
+            status_code=403, detail="Only administrator can modify administrator accounts"
+        )
     if request.display_name is not None:
         display_name = request.display_name.strip()[:80]
         user.display_name = display_name or user.username
     if request.password is not None:
         password = request.password.strip()
         if password:
+            try:
+                validate_password_complexity(password)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
             user.password_hash = hash_password(password)
     if request.role is not None and request.role != user.role:
         if user.id == current_user.id:

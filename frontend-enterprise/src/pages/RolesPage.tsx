@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { ShieldCheck } from 'lucide-react';
+import { ShieldCheck, User } from 'lucide-react';
 
 import AppHeader from '@/components/AppHeader';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -25,6 +25,7 @@ import { cn } from '@/lib/utils';
 import { MENU_CONTENT_CLASS, MENU_ITEM_CLASS, MENU_ITEM_DANGER_CLASS, MOBILE_CARD_CLASS, formatDateTime } from '@/lib/enterprise-ui';
 
 import { api, TENANT_ID } from '../api/client';
+import IconAccounts from '../assets/icons/sys-accounts.svg?react';
 import IconRoles from '../assets/icons/sys-roles.svg?react';
 import IconAdd from '../assets/icons/add.svg?react';
 import IconClear from '../assets/icons/field-clear.svg?react';
@@ -45,6 +46,14 @@ type RoleRead = {
   is_builtin: boolean;
   permissions: string[];
   user_count: number;
+  created_at?: string;
+  updated_at?: string;
+};
+
+type RoleMember = {
+  id: string;
+  username: string;
+  display_name?: string;
   created_at?: string;
   updated_at?: string;
 };
@@ -85,6 +94,10 @@ export default function RolesPage({
   const [creating, setCreating] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<RoleRead | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [membersOpen, setMembersOpen] = useState(false);
+  const [members, setMembers] = useState<RoleMember[]>([]);
+  const [membersLoading, setMembersLoading] = useState(false);
+  const [membersRole, setMembersRole] = useState<RoleRead | null>(null);
 
   async function load() {
     setLoading(true);
@@ -204,6 +217,23 @@ export default function RolesPage({
     }
   }
 
+  async function openMembers(row: RoleRead) {
+    setMembersRole(row);
+    setMembersOpen(true);
+    setMembersLoading(true);
+    setMembers([]);
+    try {
+      const rows = await api.get<RoleMember[]>(
+        `/api/enterprise/roles/${row.id}/users?tenant_id=${TENANT_ID}`,
+      );
+      setMembers(rows);
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '加载成员失败');
+    } finally {
+      setMembersLoading(false);
+    }
+  }
+
   function renderPermissionSummary(row: RoleRead) {
     if (row.id === ADMIN_ROLE_ID) {
       return <span className="text-[12px] text-[#858b9c]">全部权限</span>;
@@ -241,6 +271,10 @@ export default function RolesPage({
           <IconMore className="size-3.5" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className={MENU_CONTENT_CLASS}>
+          <DropdownMenuItem className={MENU_ITEM_CLASS} onSelect={() => void openMembers(row)}>
+            <IconAccounts />
+            查看成员
+          </DropdownMenuItem>
           <DropdownMenuItem className={MENU_ITEM_CLASS} onSelect={() => openEdit(row)}>
             <IconEdit />
             编辑
@@ -419,6 +453,14 @@ export default function RolesPage({
         </div>
       </div>
 
+      <RoleMembersDialog
+        open={membersOpen}
+        role={membersRole}
+        rows={members}
+        loading={membersLoading}
+        onClose={() => setMembersOpen(false)}
+      />
+
       <RoleDialog
         open={createOpen}
         title="新建角色"
@@ -452,6 +494,73 @@ export default function RolesPage({
         onConfirm={() => void confirmDelete()}
       />
     </div>
+  );
+}
+
+function RoleMembersDialog({
+  open,
+  role,
+  rows,
+  loading,
+  onClose,
+}: {
+  open: boolean;
+  role: RoleRead | null;
+  rows: RoleMember[];
+  loading: boolean;
+  onClose: () => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+      <DialogContent
+        aria-describedby={undefined}
+        className="flex w-[calc(100%-2rem)] flex-col gap-[16px] overflow-hidden rounded-[14px] px-[20px] py-[16px] sm:max-w-[480px]"
+      >
+        <div className="flex items-center gap-[6px] px-[12px] text-[#757f9c]">
+          <IconRoles className="size-[14px] shrink-0" />
+          <DialogTitle className="text-[14px] font-normal leading-none text-[#757f9c]">
+            角色成员
+          </DialogTitle>
+        </div>
+
+        <div className="flex max-h-[50vh] flex-col gap-[8px] overflow-y-auto px-[12px]">
+          {loading ? (
+            <div className="py-[28px] text-center text-[13px] text-[#858b9c]">加载中…</div>
+          ) : rows.length === 0 ? (
+            <div className="py-[28px] text-center text-[13px] text-[#858b9c]">暂无成员</div>
+          ) : (
+            rows.map((row) => (
+              <div
+                key={row.id}
+                className="flex items-center gap-[10px] rounded-[10px] border-[0.5px] border-[#eef0f4] px-[12px] py-[10px]"
+              >
+                <span className="grid size-[28px] shrink-0 place-items-center rounded-full bg-[#eef1fb] text-[#7e96dc]">
+                  <User className="size-[14px]" />
+                </span>
+                <span className="min-w-0">
+                  <strong className="block truncate text-[13px] font-medium text-[#18181a]">
+                    {row.display_name || row.username}
+                  </strong>
+                  <span className="block truncate text-[12px] text-[#858b9c]">
+                    {row.username} · {role?.display_name || ''}
+                  </span>
+                </span>
+              </div>
+            ))
+          )}
+        </div>
+
+        <div className="flex items-center justify-end px-[12px]">
+          <UIButton
+            variant="outline"
+            onClick={onClose}
+            className="h-[32px] w-[80px] rounded-[10px] border-[#e3e7f1] bg-white px-[12px] text-[14px] font-normal text-[#464c5e] hover:border-[#e3e7f1] hover:bg-[#f6f6f6] hover:text-[#18181a]"
+          >
+            关闭
+          </UIButton>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

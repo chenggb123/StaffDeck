@@ -69,7 +69,7 @@ def test_database_role_controls_account_management() -> None:
             UserCreateRequest(
                 tenant_id="tenant_demo",
                 username="created_admin",
-                password="secret",
+                password="Admin-secret1!",
                 role="admin",
             ),
             role_admin,
@@ -129,7 +129,7 @@ def test_accounts_manager_cannot_create_or_promote_administrator() -> None:
                 UserCreateRequest(
                     tenant_id="tenant_demo",
                     username="forbidden_admin",
-                    password="secret",
+                    password="Admin-secret1!",
                     role=ADMIN_ROLE_ID,
                 ),
                 accounts_manager,
@@ -163,6 +163,119 @@ def test_accounts_manager_cannot_create_or_promote_administrator() -> None:
             assert error.status_code == 403
         else:
             raise AssertionError("accounts manager must not demote administrator accounts")
+
+
+def test_admin_can_reset_member_password_but_not_accounts_manager_touch_admin() -> None:
+    with _test_session() as db:
+        db.add(Tenant(id="tenant_demo", name="Demo"))
+        ensure_builtin_roles(db, "tenant_demo")
+        accounts_role = Role(
+            tenant_id="tenant_demo",
+            display_name="账号管理员",
+            permissions_json=[PERM_ACCOUNTS],
+        )
+        db.add(accounts_role)
+
+        admin = User(
+            id="user_admin",
+            tenant_id="tenant_demo",
+            username="admin",
+            role=ADMIN_ROLE_ID,
+            password_hash=hash_password("secret"),
+        )
+        member = User(
+            id="user_member",
+            tenant_id="tenant_demo",
+            username="member",
+            role=MEMBER_ROLE_ID,
+            password_hash=hash_password("old-secret"),
+        )
+        accounts_manager = User(
+            id="user_accounts_manager",
+            tenant_id="tenant_demo",
+            username="accounts_manager",
+            role=accounts_role.id,
+            password_hash=hash_password("secret"),
+        )
+        db.add(admin)
+        db.add(member)
+        db.add(accounts_manager)
+        db.commit()
+
+        update_user(
+            member.id,
+            UserUpdateRequest(tenant_id="tenant_demo", password="New-secret1!"),
+            admin,
+            db,
+        )
+        login(
+            LoginRequest(tenant_id="tenant_demo", username="member", password="New-secret1!"),
+            db,
+        )
+
+        try:
+            update_user(
+                admin.id,
+                UserUpdateRequest(tenant_id="tenant_demo", password="hacked"),
+                accounts_manager,
+                db,
+            )
+        except HTTPException as error:
+            assert error.status_code == 403
+        else:
+            raise AssertionError("accounts manager must not reset administrator passwords")
+
+
+def test_password_complexity_is_enforced_on_create_and_update() -> None:
+    with _test_session() as db:
+        db.add(Tenant(id="tenant_demo", name="Demo"))
+        ensure_builtin_roles(db, "tenant_demo")
+        admin = User(
+            id="user_admin",
+            tenant_id="tenant_demo",
+            username="admin",
+            role=ADMIN_ROLE_ID,
+            password_hash=hash_password("Admin-secret1!"),
+        )
+        db.add(admin)
+        db.commit()
+
+        for weak_password in ("short1!", "alllower1!", "ALLUPPER1!", "NoDigit!", "NoSpecial1"):
+            try:
+                create_user(
+                    UserCreateRequest(
+                        tenant_id="tenant_demo",
+                        username="weak_user",
+                        password=weak_password,
+                    ),
+                    admin,
+                    db,
+                )
+            except HTTPException as error:
+                assert error.status_code == 400
+            else:
+                raise AssertionError(f"weak password must be rejected: {weak_password}")
+
+        created = create_user(
+            UserCreateRequest(
+                tenant_id="tenant_demo",
+                username="strong_user",
+                password="Strong-pass1!",
+            ),
+            admin,
+            db,
+        )
+        try:
+            update_user(
+                created.id,
+                UserUpdateRequest(tenant_id="tenant_demo", password="weak"),
+                admin,
+                db,
+            )
+        except HTTPException as error:
+            assert error.status_code == 400
+        else:
+            raise AssertionError("weak updated password must be rejected")
 
 
 def _test_session() -> Session:
