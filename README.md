@@ -32,6 +32,17 @@ StaffDeck is an enterprise platform for building and managing digital employees.
 - 🧩 **State-machine-driven procedural skills**: Generate structured SOPs from natural language and use state machines to execute complex processes accurately. Support real-time switching across multiple flows, context preservation, visual editing, version management, and branch evolution.
 - 📚 **Document-structure-aware knowledge retrieval**: Build navigable indexes across documents, chapters, pages, summaries, and other levels, allowing digital employees to first estimate where information may reside and then locate the original text step by step. Support knowledge buckets, targeted retrieval, source citations, and retrieval debugging.
 - 🔌 **Autonomous execution and continuous improvement**: Perform real business operations through HTTP APIs, MCP, and scheduled tasks, then close the improvement loop with long-term memory, complete traces, human takeover, user feedback, and feedback analysis.
+- 🔐 **Role-based permissions**: Control management access with built-in `admin`/`member` roles, configurable permission points, and custom roles.
+
+## Role & Permission Management
+
+StaffDeck uses a role-based permission model for management functions:
+
+- `admin`: built-in administrator role with all permissions; it cannot be edited or deleted.
+- `member`: default role; its permissions can be configured by an administrator.
+- Custom roles: administrators can create custom roles, assign any permission combination, and assign roles to accounts.
+
+Management permissions include account management, role management, model configuration, channel integration, MCP/tool management, system settings, global digital employee management, scheduled tasks, chat operations, and oversight audit. Users without any management permission only access the employee gallery and chat workspace; management entries are hidden unless the user's role includes the corresponding permission.
 
 ## Desktop Downloads
 
@@ -83,6 +94,7 @@ plus /workspace/gallery before reporting success.
 
 - [💡 About StaffDeck](#-about-staffdeck)
   - [Core Features](#core-features)
+  - [Role & Permission Management](#role--permission-management)
   - [Desktop Downloads](#desktop-downloads)
   - [Agent-Friendly Quick Deploy](#agent-friendly-quick-deploy)
   - [Table of Contents](#table-of-contents)
