@@ -47,6 +47,26 @@ StaffDeck 使用基于角色的权限模型控制管理端功能：
 
 管理权限点包括账号管理、角色权限管理、模型配置、渠道接入、MCP 与工具管理、系统设置、全局数字员工管理、企业定时任务、会话管理操作和监督审计。没有任何管理权限的用户只能进入员工广场和聊天工作区，管理端入口会按权限隐藏。
 
+**快速使用**
+
+1. 使用内置管理员账号登录，进入**角色权限**页面（`/enterprise/roles`）。
+2. 编辑默认 `member` 角色权限，或创建自定义角色并勾选所需权限点。
+3. 进入**账号管理**，为账号分配角色。
+4. 角色和权限变更会在下一次请求时生效；已登录用户刷新页面即可获得最新权限。
+
+| 权限点 | 管理功能 |
+| --- | --- |
+| `accounts.manage` | 账号管理 |
+| `roles.manage` | 角色权限管理 |
+| `model_configs.manage` | 模型配置 |
+| `channels.manage` | 渠道接入 |
+| `mcp.manage` | MCP 与工具管理 |
+| `system_settings.manage` | 系统设置 |
+| `agents.manage_global` | 全局数字员工管理 |
+| `scheduled_tasks.manage` | 企业定时任务 |
+| `chat_ops.manage` | 会话管理操作 |
+| `oversight.view` | 监督审计 |
+
 ## 客户端下载
 
 访问 [StaffDeck 官方网站](https://staffdeck.openbmb.cn/)，或直接下载最新桌面客户端：

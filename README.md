@@ -44,6 +44,26 @@ StaffDeck uses a role-based permission model for management functions:
 
 Management permissions include account management, role management, model configuration, channel integration, MCP/tool management, system settings, global digital employee management, scheduled tasks, chat operations, and oversight audit. Users without any management permission only access the employee gallery and chat workspace; management entries are hidden unless the user's role includes the corresponding permission.
 
+**Quick guide**
+
+1. Sign in with the built-in administrator account and open **Role & Permissions** (`/enterprise/roles`).
+2. Edit the default `member` role permissions, or create a custom role with the desired permission combination.
+3. Open **Account Management** and assign a role to each account.
+4. Role and permission changes take effect on the next request; signed-in users only need to refresh the page to receive the updated permission set.
+
+| Permission key | Management surface |
+| --- | --- |
+| `accounts.manage` | Account management |
+| `roles.manage` | Role and permission management |
+| `model_configs.manage` | Model configuration |
+| `channels.manage` | Channel integration |
+| `mcp.manage` | MCP and tool management |
+| `system_settings.manage` | System settings |
+| `agents.manage_global` | Global digital employee management |
+| `scheduled_tasks.manage` | Enterprise scheduled tasks |
+| `chat_ops.manage` | Chat operation management |
+| `oversight.view` | Oversight audit |
+
 ## Desktop Downloads
 
 Visit the [StaffDeck official website](https://staffdeck.openbmb.cn/) or download the latest desktop release directly:
