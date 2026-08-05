@@ -19,7 +19,8 @@ from app.db.models import (
 from app.feedback import feedback_analysis_read
 from app.observability.session_timings import enrich_turn_traces_with_timings
 from app.security.auth import get_current_user
-from app.security.permissions import agent_owned_by_user, is_admin_user
+from app.security.permissions import PERM_OVERSIGHT, agent_owned_by_user
+from app.security.rbac import user_has_permission
 from app.security.tenant import ensure_tenant
 
 router = APIRouter(prefix="/api/enterprise/sessions", tags=["enterprise:sessions"])
@@ -167,7 +168,7 @@ def _can_view_all_agent_sessions(
     agent_id: str | None,
     current_user: User,
 ) -> bool:
-    if is_admin_user(current_user):
+    if user_has_permission(db, current_user, PERM_OVERSIGHT):
         return True
     if not agent_id:
         return False
@@ -190,7 +191,7 @@ def _get_visible_chat_session(
     row = db.get(ChatSession, session_id)
     if not row or row.tenant_id != tenant_id:
         raise HTTPException(status_code=404, detail="Session not found")
-    if row.user_id == current_user.id or is_admin_user(current_user):
+    if row.user_id == current_user.id or user_has_permission(db, current_user, PERM_OVERSIGHT):
         return row
     agent = db.get(AgentProfile, row.agent_id) if row.agent_id else None
     if (

@@ -4,7 +4,11 @@ import { api, TENANT_ID } from '@/api/client';
 import AppSidebar from '@/components/AppSidebar';
 import { notify } from '@/components/ui/app-toast';
 import { SidebarProvider } from '@/components/ui/sidebar';
-import { getEnterpriseAuthSession, isEnterpriseAdmin } from '@/auth';
+import {
+  getEnterpriseAuthSession,
+  hasAnyEnterpriseManagementPermission,
+  isEnterpriseAdmin,
+} from '@/auth';
 import type { AgentProfileRead } from '@/types';
 
 import EmployeeGalleryPage from '../EmployeeGalleryPage';
@@ -16,6 +20,7 @@ export default function ChatGalleryPage() {
   const chat = useChatSession();
   const auth = getEnterpriseAuthSession();
   const isAdmin = isEnterpriseAdmin(auth?.user);
+  const canAccessAdmin = hasAnyEnterpriseManagementPermission(auth?.user);
 
   async function startGalleryChat(agent: AgentProfileRead) {
     try {
@@ -59,7 +64,7 @@ export default function ChatGalleryPage() {
         onOpenHandoffs={chat.openHandoffInbox}
         onRenameSession={chat.openRename}
         onDeleteSession={chat.requestDelete}
-        onOpenAdmin={chat.openAdmin}
+        onOpenAdmin={canAccessAdmin ? chat.openAdmin : undefined}
       />
       <main className="min-h-0 flex-1 overflow-y-auto">
         <EmployeeGalleryPage

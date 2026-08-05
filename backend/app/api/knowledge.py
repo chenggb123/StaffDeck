@@ -256,7 +256,7 @@ def _resolve_upload_knowledge_base(
         return knowledge_base
 
     if not (agent and not agent.is_overall):
-        ensure_open_gallery_admin(request.tenant_id, current_user)
+        ensure_open_gallery_admin(db, request.tenant_id, current_user)
     base_name = _knowledge_base_name_from_upload(request)
     name = _unique_knowledge_base_name(db, request.tenant_id, base_name)
     knowledge_base = KnowledgeBase(
@@ -1077,4 +1077,4 @@ def _ensure_open_gallery_knowledge_admin(
         and knowledge_base.tenant_id == tenant_id
         and is_open_gallery_resource(db, tenant_id, "knowledge_base", knowledge_base)
     ):
-        ensure_open_gallery_admin(tenant_id, current_user)
+        ensure_open_gallery_admin(db, tenant_id, current_user)

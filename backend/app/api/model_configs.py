@@ -32,7 +32,7 @@ from app.llm.schemas import (
 )
 from app.security.auth import get_current_user, require_current_tenant
 from app.security.encryption import decrypt_secret, encrypt_secret, mask_secret
-from app.security.permissions import ensure_tenant_admin, require_tenant_admin
+from app.security.permissions import PERM_MODEL_CONFIGS, ensure_permission, require_permission
 from app.security.tenant import ensure_tenant
 
 router = APIRouter(
@@ -102,7 +102,7 @@ def create_model_config(
     db: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> ModelConfigRead:
-    ensure_tenant_admin(request.tenant_id, current_user)
+    ensure_permission(db, request.tenant_id, current_user, PERM_MODEL_CONFIGS)
     ensure_tenant(db, request.tenant_id)
     protocol = resolve_api_protocol(request.api_protocol, request.provider)
     if not request.api_key:
@@ -139,7 +139,7 @@ def update_model_config(
     db: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> ModelConfigRead:
-    ensure_tenant_admin(request.tenant_id, current_user)
+    ensure_permission(db, request.tenant_id, current_user, PERM_MODEL_CONFIGS)
     row = _get_model_config(db, request.tenant_id, config_id)
     protocol = resolve_api_protocol(request.api_protocol, request.provider) if (
         request.api_protocol is not None or request.provider is not None
@@ -218,7 +218,7 @@ def update_model_config(
 @router.post(
     "/{config_id}/set-default",
     response_model=ModelConfigRead,
-    dependencies=[Depends(require_tenant_admin)],
+    dependencies=[Depends(require_permission(PERM_MODEL_CONFIGS))],
 )
 def set_default_model_config(
     config_id: str, tenant_id: str = Query(...), db: Session = Depends(get_session)
@@ -239,7 +239,7 @@ def set_default_model_config(
 @router.post(
     "/{config_id}/test",
     response_model=ModelConfigTestResponse,
-    dependencies=[Depends(require_tenant_admin)],
+    dependencies=[Depends(require_permission(PERM_MODEL_CONFIGS))],
 )
 def test_model_config(
     config_id: str,

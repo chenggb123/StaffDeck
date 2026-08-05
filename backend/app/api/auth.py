@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import base64
 import logging
-from typing import Literal, Optional
+from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile
 from pydantic import BaseModel
@@ -11,7 +11,14 @@ from sqlmodel import Session, select
 from app.db import get_session
 from app.db.models import User, UserAvatar, utc_now
 from app.security.auth import create_access_token, get_current_user, hash_password, verify_password
-from app.security.permissions import MEMBER_ROLE, is_admin_user
+from app.security.permissions import MEMBER_ROLE, PERM_ACCOUNTS, ensure_permission, is_admin_user
+from app.security.rbac import (
+    ADMIN_ROLE_ID,
+    ALL_PERMISSION_KEYS,
+    get_role,
+    resolve_role_permissions,
+    user_is_admin,
+)
 from app.security.tenant import ensure_tenant
 
 
@@ -31,14 +38,14 @@ class UserCreateRequest(BaseModel):
     username: str
     password: str
     display_name: Optional[str] = None
-    role: Literal["admin", "member"] = MEMBER_ROLE
+    role: str = MEMBER_ROLE
 
 
 class UserUpdateRequest(BaseModel):
     tenant_id: str
     display_name: Optional[str] = None
     password: Optional[str] = None
-    role: Optional[Literal["admin", "member"]] = None
+    role: Optional[str] = None
 
 
 class UserRead(BaseModel):
@@ -46,7 +53,9 @@ class UserRead(BaseModel):
     tenant_id: str
     username: str
     display_name: Optional[str] = None
-    role: Literal["admin", "member"]
+    role: str
+    role_display_name: Optional[str] = None
+    permissions: list[str] = []
     source: str = "web"
     # 仅 /me 与 /login 带出:头像资源指针(存在性标识),不内联二进制——
     # 完整 data_url 可达 2.67MB,内联会把登录/会话刷新响应与前端 localStorage 撑爆
@@ -79,13 +88,13 @@ def login(request: LoginRequest, db: Session = Depends(get_session)) -> LoginRes
 
     return LoginResponse(
         token=create_access_token(user),
-        user=_user_read(user, _avatar_pointer_for(db, user.id)),
+        user=_user_read(db, user, _avatar_pointer_for(db, user.id)),
     )
 
 
 @router.get("/me", response_model=UserRead)
 def me(user: User = Depends(get_current_user), db: Session = Depends(get_session)) -> UserRead:
-    return _user_read(user, _avatar_pointer_for(db, user.id))
+    return _user_read(db, user, _avatar_pointer_for(db, user.id))
 
 
 MAX_AVATAR_BYTES = 2 * 1024 * 1024
@@ -185,13 +194,17 @@ def create_user(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_session),
 ) -> UserRead:
-    if not is_admin_user(current_user):
-        raise HTTPException(status_code=403, detail="Only administrator can create accounts")
-    if request.tenant_id != current_user.tenant_id:
-        raise HTTPException(status_code=403, detail="Cannot create accounts for another tenant")
+    ensure_permission(db, request.tenant_id, current_user, PERM_ACCOUNTS)
     username = request.username.strip()
     if not username or not request.password:
         raise HTTPException(status_code=400, detail="Username and password are required")
+    role = get_role(db, request.tenant_id, request.role)
+    if role is None:
+        raise HTTPException(status_code=400, detail="Unknown role")
+    if role.id == ADMIN_ROLE_ID and not user_is_admin(current_user):
+        raise HTTPException(
+            status_code=403, detail="Only administrator can assign administrator role"
+        )
     existing = db.exec(
         select(User).where(User.tenant_id == request.tenant_id, User.username == username)
     ).first()
@@ -201,13 +214,13 @@ def create_user(
         tenant_id=request.tenant_id,
         username=username,
         display_name=(request.display_name or username).strip()[:80],
-        role=request.role,
+        role=role.id,
         password_hash=hash_password(request.password),
     )
     db.add(user)
     db.commit()
     db.refresh(user)
-    return _user_read(user)
+    return _user_read(db, user)
 
 
 @router.get("/users", response_model=list[UserRead])
@@ -217,13 +230,13 @@ def list_users(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_session),
 ) -> list[UserRead]:
-    _require_admin(current_user, tenant_id)
+    ensure_permission(db, tenant_id, current_user, PERM_ACCOUNTS)
     statement = select(User).where(User.tenant_id == tenant_id)
     if not include_channel:
         # 渠道懒建账号(source != 'web')默认从用户管理列表隐藏
         statement = statement.where(User.source == "web")
     rows = db.exec(statement.order_by(User.created_at.desc())).all()
-    return [_user_read(row) for row in rows]
+    return [_user_read(db, row) for row in rows]
 
 
 @router.put("/users/{user_id}", response_model=UserRead)
@@ -233,7 +246,7 @@ def update_user(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_session),
 ) -> UserRead:
-    _require_admin(current_user, request.tenant_id)
+    ensure_permission(db, request.tenant_id, current_user, PERM_ACCOUNTS)
     user = db.get(User, user_id)
     if not user or user.tenant_id != request.tenant_id:
         raise HTTPException(status_code=404, detail="Account not found")
@@ -247,12 +260,24 @@ def update_user(
     if request.role is not None and request.role != user.role:
         if user.id == current_user.id:
             raise HTTPException(status_code=400, detail="Cannot change your own account role")
-        user.role = request.role
+        # 管理员账号只能由管理员改派,防止账号管理者越权剥夺管理员
+        if user.role == ADMIN_ROLE_ID and not user_is_admin(current_user):
+            raise HTTPException(
+                status_code=403, detail="Only administrator can modify an administrator's role"
+            )
+        target_role = get_role(db, request.tenant_id, request.role)
+        if target_role is None:
+            raise HTTPException(status_code=400, detail="Unknown role")
+        if target_role.id == ADMIN_ROLE_ID and not user_is_admin(current_user):
+            raise HTTPException(
+                status_code=403, detail="Only administrator can assign administrator role"
+            )
+        user.role = target_role.id
     user.updated_at = utc_now()
     db.add(user)
     db.commit()
     db.refresh(user)
-    return _user_read(user)
+    return _user_read(db, user)
 
 
 @router.delete("/users/{user_id}")
@@ -262,7 +287,7 @@ def delete_user(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_session),
 ) -> dict[str, bool]:
-    _require_admin(current_user, tenant_id)
+    ensure_permission(db, tenant_id, current_user, PERM_ACCOUNTS)
     user = db.get(User, user_id)
     if not user or user.tenant_id != tenant_id:
         raise HTTPException(status_code=404, detail="Account not found")
@@ -277,13 +302,26 @@ def delete_user(
     return {"ok": True}
 
 
-def _user_read(user: User, avatar_url: Optional[str] = None) -> UserRead:
+def _user_read(db: Session, user: User, avatar_url: Optional[str] = None) -> UserRead:
+    role = get_role(db, user.tenant_id, user.role)
+    if role is not None:
+        role_display_name: Optional[str] = role.display_name
+        permissions = sorted(resolve_role_permissions(role))
+    elif user_is_admin(user):
+        # 兼容角色行尚未就位的存量管理员
+        role_display_name = "管理员"
+        permissions = list(ALL_PERMISSION_KEYS)
+    else:
+        role_display_name = user.role
+        permissions = []
     return UserRead(
         id=user.id,
         tenant_id=user.tenant_id,
         username=user.username,
         display_name=user.display_name,
         role=user.role,
+        role_display_name=role_display_name,
+        permissions=permissions,
         source=user.source,
         avatar_url=avatar_url,
         created_at=user.created_at.isoformat() if user.created_at else None,
@@ -307,10 +345,3 @@ def _parse_avatar_data_url(data_url: str) -> Optional[tuple[bytes, str]]:
         return base64.b64decode(payload), content_type
     except (ValueError, TypeError):
         return None
-
-
-def _require_admin(user: User, tenant_id: str) -> None:
-    if not is_admin_user(user):
-        raise HTTPException(status_code=403, detail="Only administrator can manage accounts")
-    if user.tenant_id != tenant_id:
-        raise HTTPException(status_code=403, detail="Cannot manage accounts for another tenant")

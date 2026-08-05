@@ -7,20 +7,13 @@ import BrandLogo from '../components/BrandLogo';
 import IconFieldClear from '../assets/icons/field-clear.svg?react';
 import IconFieldEye from '../assets/icons/field-eye.svg?react';
 import IconFieldEyeOn from '../assets/icons/field-eye-on.svg?react';
-import loginPreview from '../assets/staffdeck/login-preview.png';
 
 export type LoginPageProps = {
   onLogin: (session: EnterpriseAuthSession) => void;
 };
 
-/**
- * Signed-out landing / login page. Mirrors Figma node 68:201 (`Login_light`):
- * a full-bleed hero with the StaffDeck wordmark and a product-preview placeholder
- * anchored to the bottom. Clicking "登录" slides the credentials form (node 68:1563)
- * down into view in place of the call-to-action button.
- */
+/** Signed-out login page with account and password inputs shown by default. */
 export default function LoginPage({ onLogin }: LoginPageProps) {
-  const [showForm, setShowForm] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -79,22 +72,13 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
             数字员工运营平台
           </h1>
 
-          {!showForm ? (
-            <button
-              type="button"
-              onClick={() => setShowForm(true)}
-              className="mt-[24px] flex items-center justify-center rounded-[10px] bg-[#18181a] px-[36px] py-[10px] text-[16px] font-normal text-white transition-colors hover:bg-[#18181a]/90"
-            >
-              登录
-            </button>
-          ) : (
-            <form
-              className="mt-[24px] flex w-[320px] flex-col duration-300 ease-out animate-in fade-in slide-in-from-top-4"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void login();
-              }}
-            >
+          <form
+            className="mt-[24px] flex w-[320px] flex-col"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void login();
+            }}
+          >
               <div
                 className={`${inputBaseClass} ${usernameError ? 'border-[#f54a45]' : username ? 'border-[#18181a]' : 'border-[#e3e7f1]'}`}
               >
@@ -162,17 +146,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
               >
                 {loading ? '登录中…' : '登录'}
               </button>
-            </form>
-          )}
-        </div>
-
-        <div className="mt-[32px] flex w-full justify-center">
-          <img
-            src={loginPreview}
-            alt="StaffDeck 产品预览"
-            className="h-auto w-full max-w-[1200px] select-none object-contain"
-            draggable={false}
-          />
+          </form>
         </div>
       </main>
     </div>

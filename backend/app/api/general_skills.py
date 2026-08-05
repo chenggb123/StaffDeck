@@ -138,7 +138,7 @@ def import_general_skill(
     agent = ensure_agent_scope_manager(db, request.tenant_id, agent_id, current_user)
     is_private_agent_scope = bool(agent and not agent.is_overall)
     if not is_private_agent_scope:
-        ensure_open_gallery_admin(request.tenant_id, current_user)
+        ensure_open_gallery_admin(db, request.tenant_id, current_user)
     row = None
     inherited_capability_scope = "general"
     if lookup_slug:
@@ -413,7 +413,7 @@ def _create_imported_general_skill(
         updated_at=now,
     )
     if not (agent and not agent.is_overall):
-        ensure_open_gallery_admin(tenant_id, current_user)
+        ensure_open_gallery_admin(db, tenant_id, current_user)
     if agent and not agent.is_overall:
         mark_resource_private_for_agent(row, agent.id, row.metadata_json or {})
     else:
@@ -543,7 +543,7 @@ def publish_general_skill(
         db.add(binding)
         db.commit()
         return general_skill_read(row, status_override="published")
-    ensure_open_gallery_admin(tenant_id, current_user)
+    ensure_open_gallery_admin(db, tenant_id, current_user)
     row.status = "published"
     mark_resource_open_gallery(row, row.metadata_json or {})
     row.updated_at = utc_now()
@@ -580,7 +580,7 @@ def archive_general_skill(
         db.add(binding)
         db.commit()
         return general_skill_read(row, status_override="archived")
-    ensure_open_gallery_admin(tenant_id, current_user)
+    ensure_open_gallery_admin(db, tenant_id, current_user)
     row.status = "archived"
     row.updated_at = utc_now()
     db.add(row)
@@ -649,13 +649,13 @@ def delete_general_skill(
     if agent and agent.is_overall:
         if not is_open_gallery_resource(db, tenant_id, "general_skill", row):
             raise HTTPException(status_code=404, detail="General skill not visible in open gallery")
-        ensure_open_gallery_admin(tenant_id, current_user)
+        ensure_open_gallery_admin(db, tenant_id, current_user)
         hide_open_gallery_binding(db, tenant_id, "general_skill", row.id)
         db.commit()
         return {"status": "hidden", "slug": slug}
 
     require_overall_agent(db, tenant_id, agent_id)
-    ensure_open_gallery_admin(tenant_id, current_user)
+    ensure_open_gallery_admin(db, tenant_id, current_user)
     db.delete(row)
     db.commit()
     return {"status": "deleted", "slug": slug}

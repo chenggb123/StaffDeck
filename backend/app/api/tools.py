@@ -24,10 +24,11 @@ from app.db import get_session
 from app.db.models import AgentProfile, AgentResourceBinding, MCPServer, Tool, User, utc_now
 from app.security.auth import ensure_current_user_tenant, get_current_user
 from app.security.permissions import (
+    PERM_MCP,
     ensure_agent_scope_manager,
     ensure_open_gallery_admin,
     require_agent_scope_viewer,
-    require_tenant_admin,
+    require_permission,
 )
 from app.security.tenant import ensure_tenant
 from app.tools import ToolExecutor
@@ -174,7 +175,7 @@ def create_tool(
             metadata_json=creator_metadata,
         )
     else:
-        ensure_open_gallery_admin(request.tenant_id, current_user)
+        ensure_open_gallery_admin(db, request.tenant_id, current_user)
         ensure_open_gallery_binding(
             db,
             request.tenant_id,
@@ -297,7 +298,7 @@ def update_tool(
         if not source_was_open_gallery and request.name.strip() != row.name:
             raise HTTPException(status_code=400, detail="Tool name cannot be modified")
     else:
-        ensure_open_gallery_admin(request.tenant_id, current_user)
+        ensure_open_gallery_admin(db, request.tenant_id, current_user)
         source_tool_id = row.id
         if request.name.strip() != row.name:
             raise HTTPException(status_code=400, detail="Tool name cannot be modified")
@@ -380,12 +381,12 @@ def delete_tool(
     if agent and agent.is_overall:
         if not is_open_gallery_resource(db, tenant_id, "tool", row):
             raise HTTPException(status_code=404, detail="Tool not visible in open gallery")
-        ensure_open_gallery_admin(tenant_id, current_user)
+        ensure_open_gallery_admin(db, tenant_id, current_user)
         hide_open_gallery_binding(db, tenant_id, "tool", row.id)
         db.commit()
         return {"status": "hidden"}
     require_overall_agent(db, tenant_id, agent_id)
-    ensure_open_gallery_admin(tenant_id, current_user)
+    ensure_open_gallery_admin(db, tenant_id, current_user)
     db.delete(row)
     db.commit()
     return {"status": "deleted"}
@@ -655,7 +656,7 @@ def _update_inherited_mcp_tool_scopes(db: Session, server: MCPServer) -> None:
 
 
 @mcp_router.get(
-    "", response_model=list[MCPServerRead], dependencies=[Depends(require_tenant_admin)]
+    "", response_model=list[MCPServerRead], dependencies=[Depends(require_permission(PERM_MCP))]
 )
 def list_mcp_servers(
     tenant_id: str = Query(...), db: Session = Depends(get_session)
@@ -674,7 +675,7 @@ def create_mcp_server(
     current_user: User = Depends(get_current_user),
 ) -> MCPServerRead:
     ensure_tenant(db, request.tenant_id)
-    ensure_open_gallery_admin(request.tenant_id, current_user)
+    ensure_open_gallery_admin(db, request.tenant_id, current_user)
     existing = db.exec(
         select(MCPServer).where(
             MCPServer.tenant_id == request.tenant_id, MCPServer.name == request.name
@@ -708,7 +709,7 @@ def create_mcp_server(
 
 
 @mcp_router.get(
-    "/{server_id}", response_model=MCPServerRead, dependencies=[Depends(require_tenant_admin)]
+    "/{server_id}", response_model=MCPServerRead, dependencies=[Depends(require_permission(PERM_MCP))]
 )
 def get_mcp_server(
     server_id: str, tenant_id: str = Query(...), db: Session = Depends(get_session)
@@ -725,7 +726,7 @@ def update_mcp_server(
     current_user: User = Depends(get_current_user),
 ) -> MCPServerRead:
     row = _get_mcp_server(db, request.tenant_id, server_id)
-    ensure_open_gallery_admin(request.tenant_id, current_user)
+    ensure_open_gallery_admin(db, request.tenant_id, current_user)
     conn = request.connection
     row.name = request.name
     row.display_name = request.display_name
@@ -763,7 +764,7 @@ def delete_mcp_server(
         # 工具集是租户级资源:员工范围内只解绑该员工可见的同步工具,不动 server 本身
         return _remove_mcp_server_from_agent(db, tenant_id, agent, server_id)
     require_overall_agent(db, tenant_id, agent_id)
-    ensure_open_gallery_admin(tenant_id, current_user)
+    ensure_open_gallery_admin(db, tenant_id, current_user)
     row = _get_mcp_server(db, tenant_id, server_id)
     if remove_tools:
         tools = db.exec(select(Tool).where(Tool.mcp_server_id == server_id)).all()
@@ -800,7 +801,7 @@ def discover_mcp_tools(
 ) -> MCPDiscoverResponse:
     """已保存 Server：拉取 tools/list，并标注哪些已导入为 Tool。"""
     row = _get_mcp_server(db, request.tenant_id, server_id)
-    ensure_open_gallery_admin(request.tenant_id, current_user)
+    ensure_open_gallery_admin(db, request.tenant_id, current_user)
     connection = request.connection or _server_connection(row)
     response = _discover_response(connection)
     if response.success:
@@ -831,7 +832,7 @@ def sync_mcp_tools(
 ) -> MCPSyncResponse:
     """把发现到的工具落成 Tool 行（新建/更新 schema），可选择导入的子集。"""
     row = _get_mcp_server(db, request.tenant_id, server_id)
-    ensure_open_gallery_admin(request.tenant_id, current_user)
+    ensure_open_gallery_admin(db, request.tenant_id, current_user)
     connection = _server_connection(row)
     discovery = _discover_response(connection)
     if not discovery.success:

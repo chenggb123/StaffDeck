@@ -82,11 +82,12 @@ from app.db.models import (
 )
 from app.security.auth import get_current_user
 from app.security.permissions import (
+    PERM_CHANNELS,
     ensure_agent_scope_manager,
     ensure_current_user_tenant,
-    is_admin_user,
     require_agent_scope_viewer,
 )
+from app.security.rbac import user_has_permission
 
 logger = logging.getLogger(__name__)
 
@@ -181,7 +182,7 @@ def _get_binding(db: Session, tenant_id: str, binding_id: str) -> ChannelBinding
 def _ensure_binding_manager(db: Session, tenant_id: str, binding: ChannelBinding, current_user: User) -> None:
     """渠道绑定管理权限:仅 admin 或绑定创建者;不随默认员工(binding.agent_id)漂移。"""
     ensure_current_user_tenant(tenant_id, current_user)
-    if is_admin_user(current_user) or binding.created_by_user_id == current_user.id:
+    if user_has_permission(db, current_user, PERM_CHANNELS) or binding.created_by_user_id == current_user.id:
         return
     raise HTTPException(status_code=403, detail="Only the creator or administrator can manage this channel binding")
 
@@ -258,8 +259,8 @@ def list_channel_bindings(
     statement = select(ChannelBinding).where(ChannelBinding.tenant_id == tenant_id)
     if agent_id:
         statement = statement.where(ChannelBinding.agent_id == agent_id)
-    elif not is_admin_user(current_user):
-        # 渠道绑定是租户级资源:admin 全量可见,普通成员只见自己创建的
+    elif not user_has_permission(db, current_user, PERM_CHANNELS):
+        # 渠道绑定是租户级资源:有渠道管理权限者全量可见,普通成员只见自己创建的
         statement = statement.where(ChannelBinding.created_by_user_id == current_user.id)
     rows = db.exec(statement.order_by(ChannelBinding.created_at)).all()
     return [channel_binding_read(db, row) for row in rows]
@@ -1097,7 +1098,7 @@ def list_tenant_delivery_audit(
 ) -> ChannelDeliveryPage:
     """Tenant-admin audit that remains available after a binding is deleted."""
     ensure_current_user_tenant(tenant_id, current_user)
-    if not is_admin_user(current_user):
+    if not user_has_permission(db, current_user, PERM_CHANNELS):
         raise HTTPException(status_code=403, detail="Only administrators can audit channel deliveries")
     from sqlalchemy import func
 

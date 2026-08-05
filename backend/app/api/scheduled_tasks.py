@@ -22,7 +22,8 @@ from app.scheduled_tasks.service import (
     update_scheduled_task,
 )
 from app.security.auth import get_current_user
-from app.security.permissions import is_admin_user as _is_admin_user
+from app.security.permissions import PERM_SCHEDULED_TASKS
+from app.security.rbac import user_has_permission
 from app.security.tenant import ensure_tenant
 
 
@@ -71,7 +72,7 @@ def list_enterprise_scheduled_task_runs_for_agent(
         conditions.append(ScheduledTaskRun.agent_id == agent_id)
     if status:
         conditions.append(ScheduledTaskRun.status == status)
-    if not _is_admin_user(current_user):
+    if not user_has_permission(db, current_user, PERM_SCHEDULED_TASKS):
         conditions.append(ScheduledTaskRun.user_id == current_user.id)
     rows = db.exec(
         select(ScheduledTaskRun, ScheduledTask)
@@ -241,7 +242,7 @@ def _list_tasks(
         conditions.append(ScheduledTask.agent_id == agent_id)
     if status:
         conditions.append(ScheduledTask.status == status)
-    if not _is_admin_user(current_user):
+    if not user_has_permission(db, current_user, PERM_SCHEDULED_TASKS):
         conditions.append(ScheduledTask.created_by_user_id == current_user.id)
     return db.exec(select(ScheduledTask).where(*conditions).order_by(ScheduledTask.updated_at.desc())).all()
 
@@ -251,7 +252,7 @@ def _get_task(db: Session, tenant_id: str, task_id: str, current_user: User) -> 
     row = db.get(ScheduledTask, task_id)
     if not row or row.tenant_id != tenant_id:
         raise HTTPException(status_code=404, detail="自动任务不存在")
-    if not _is_admin_user(current_user) and row.created_by_user_id != current_user.id:
+    if not user_has_permission(db, current_user, PERM_SCHEDULED_TASKS) and row.created_by_user_id != current_user.id:
         raise HTTPException(status_code=403, detail="无权访问该自动任务")
     return row
 

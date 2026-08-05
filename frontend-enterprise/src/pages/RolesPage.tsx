@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { User } from 'lucide-react';
+import { ShieldCheck } from 'lucide-react';
 
 import AppHeader from '@/components/AppHeader';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { DataTable, type DataTableColumn } from '@/components/DataTable';
 import { Paginator } from '@/components/Paginator';
 import {
+  Checkbox,
   Dialog,
   DialogContent,
   DialogTitle,
@@ -16,19 +17,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
   Input,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
 } from '@/components/ui';
+import { Textarea } from '@/components/ui/textarea';
 import { Button as UIButton } from '@/components/ui/button';
 import { notify } from '@/components/ui/app-toast';
 import { cn } from '@/lib/utils';
 import { MENU_CONTENT_CLASS, MENU_ITEM_CLASS, MENU_ITEM_DANGER_CLASS, MOBILE_CARD_CLASS, formatDateTime } from '@/lib/enterprise-ui';
 
 import { api, TENANT_ID } from '../api/client';
-import IconAccounts from '../assets/icons/sys-accounts.svg?react';
+import IconRoles from '../assets/icons/sys-roles.svg?react';
 import IconAdd from '../assets/icons/add.svg?react';
 import IconClear from '../assets/icons/field-clear.svg?react';
 import IconEdit from '../assets/icons/edit.svg?react';
@@ -40,82 +37,68 @@ import type { EnterpriseAuthUser } from '../auth';
 import { useClientPagination } from '../hooks/useClientPagination';
 import { StatusBadge } from './scheduled-tasks/StatusBadge';
 
-type EmployeeAccount = {
+type RoleRead = {
   id: string;
   tenant_id: string;
-  username: string;
-  display_name?: string;
-  role: string;
-  role_display_name?: string;
+  display_name: string;
+  description?: string;
+  is_builtin: boolean;
+  permissions: string[];
+  user_count: number;
   created_at?: string;
   updated_at?: string;
 };
 
-type RoleSummary = {
-  id: string;
-  display_name: string;
-  is_builtin: boolean;
+type PermissionDef = {
+  key: string;
+  name: string;
+  group: string;
+  description: string;
 };
 
-type AccountDraft = {
+type RoleDraft = {
   displayName: string;
-  password: string;
-  role: string;
+  description: string;
+  permissions: string[];
 };
 
-type AccountCreateDraft = {
-  username: string;
-  displayName: string;
-  password: string;
-  role: string;
-};
+const ROLE_PAGE_SIZE = 10;
+const ADMIN_ROLE_ID = 'admin';
 
-const ACCOUNT_PAGE_SIZE = 10;
+const EMPTY_DRAFT: RoleDraft = { displayName: '', description: '', permissions: [] };
 
-export function AccountRoleBadge({ role, roleName }: { role: string; roleName?: string }) {
-  const isAdmin = role === 'admin';
-  const label = isAdmin ? '管理员' : role === 'member' ? '普通成员' : roleName || role;
-  return <StatusBadge tone={isAdmin ? 'blue' : 'gray'}>{label}</StatusBadge>;
-}
-
-export default function AccountsPage({
+export default function RolesPage({
   currentUser,
   onLogout,
 }: {
   currentUser?: EnterpriseAuthUser;
   onLogout?: () => void;
 } = {}) {
-  const [rows, setRows] = useState<EmployeeAccount[]>([]);
-  const [roles, setRoles] = useState<RoleSummary[]>([]);
+  const [rows, setRows] = useState<RoleRead[]>([]);
+  const [catalog, setCatalog] = useState<PermissionDef[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchText, setSearchText] = useState('');
-  const [editing, setEditing] = useState<EmployeeAccount | null>(null);
-  const [draft, setDraft] = useState<AccountDraft>({ displayName: '', password: '', role: 'member' });
+  const [editing, setEditing] = useState<RoleRead | null>(null);
+  const [draft, setDraft] = useState<RoleDraft>(EMPTY_DRAFT);
   const [saving, setSaving] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
-  const [createDraft, setCreateDraft] = useState<AccountCreateDraft>({
-    username: '',
-    displayName: '',
-    password: '',
-    role: 'member',
-  });
   const [creating, setCreating] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<EmployeeAccount | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<RoleRead | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   async function load() {
     setLoading(true);
     try {
-      const [accounts, roleRows] = await Promise.all([
-        api.get<EmployeeAccount[]>(`/api/auth/users?tenant_id=${TENANT_ID}`),
-        api
-          .get<RoleSummary[]>(`/api/enterprise/roles?tenant_id=${TENANT_ID}`)
-          .catch(() => [] as RoleSummary[]),
+      const [roleRows, catalogResponse] = await Promise.all([
+        api.get<RoleRead[]>(`/api/enterprise/roles?tenant_id=${TENANT_ID}`),
+        api.get<{ permissions: PermissionDef[] }>(
+          `/api/enterprise/roles/permissions/catalog?tenant_id=${TENANT_ID}`,
+        ),
       ]);
-      setRows(accounts);
-      setRoles(roleRows);
+      setRows(roleRows);
+      setCatalog(catalogResponse.permissions || []);
     } catch (error) {
-      notify.error(error instanceof Error ? error.message : '加载账号失败');
+      notify.error(error instanceof Error ? error.message : '加载角色失败');
     } finally {
       setLoading(false);
     }
@@ -125,55 +108,56 @@ export default function AccountsPage({
     void load();
   }, []);
 
+  const permissionNameByKey = useMemo(() => {
+    const map = new Map<string, string>();
+    catalog.forEach((item) => map.set(item.key, item.name));
+    return map;
+  }, [catalog]);
+
   const filteredRows = useMemo(() => {
     const keyword = searchText.trim().toLowerCase();
     if (!keyword) return rows;
     return rows.filter((row) =>
-      [row.username, row.display_name || '', roleDisplayName(row)]
+      [row.display_name, row.description || '']
         .some((value) => value.toLowerCase().includes(keyword)),
     );
   }, [rows, searchText]);
 
-  function roleDisplayName(row: EmployeeAccount): string {
-    if (row.role_display_name) return row.role_display_name;
-    if (row.role === 'admin') return '管理员';
-    if (row.role === 'member') return '普通成员';
-    return roles.find((item) => item.id === row.role)?.display_name || row.role;
-  }
-
-  const pagination = useClientPagination(filteredRows, ACCOUNT_PAGE_SIZE, searchText);
-
-  function openEdit(row: EmployeeAccount) {
-    setEditing(row);
-    setDraft({ displayName: row.display_name || row.username, password: '', role: row.role });
-  }
+  const pagination = useClientPagination(filteredRows, ROLE_PAGE_SIZE, searchText);
 
   function openCreate() {
-    setCreateDraft({ username: '', displayName: '', password: '', role: 'member' });
+    setDraft(EMPTY_DRAFT);
     setCreateOpen(true);
   }
 
+  function openEdit(row: RoleRead) {
+    setEditing(row);
+    setDraft({
+      displayName: row.display_name,
+      description: row.description || '',
+      permissions: [...row.permissions],
+    });
+  }
+
   async function saveCreate() {
-    const username = createDraft.username.trim();
-    const password = createDraft.password.trim();
-    if (!username || !password) {
-      notify.error('请填写账号和密码');
+    const displayName = draft.displayName.trim();
+    if (!displayName) {
+      notify.error('请填写角色名称');
       return;
     }
     setCreating(true);
     try {
-      await api.post('/api/auth/users', {
+      await api.post('/api/enterprise/roles', {
         tenant_id: TENANT_ID,
-        username,
-        password,
-        display_name: createDraft.displayName.trim() || username,
-        role: createDraft.role,
+        display_name: displayName,
+        description: draft.description.trim() || undefined,
+        permissions: draft.permissions,
       });
-      notify.success('账号已创建');
+      notify.success('角色已创建');
       setCreateOpen(false);
       await load();
     } catch (error) {
-      notify.error(error instanceof Error ? error.message : '创建账号失败');
+      notify.error(error instanceof Error ? error.message : '创建角色失败');
     } finally {
       setCreating(false);
     }
@@ -181,19 +165,24 @@ export default function AccountsPage({
 
   async function saveEdit() {
     if (!editing) return;
+    const displayName = draft.displayName.trim();
+    if (!displayName) {
+      notify.error('请填写角色名称');
+      return;
+    }
     setSaving(true);
     try {
-      await api.put(`/api/auth/users/${editing.id}`, {
+      await api.put(`/api/enterprise/roles/${editing.id}`, {
         tenant_id: TENANT_ID,
-        display_name: draft.displayName.trim() || editing.username,
-        password: draft.password.trim() || undefined,
-        role: draft.role,
+        display_name: displayName,
+        description: draft.description.trim() || undefined,
+        permissions: draft.permissions,
       });
-      notify.success('账号已更新');
+      notify.success('角色已更新');
       setEditing(null);
       await load();
     } catch (error) {
-      notify.error(error instanceof Error ? error.message : '保存账号失败');
+      notify.error(error instanceof Error ? error.message : '保存角色失败');
     } finally {
       setSaving(false);
     }
@@ -204,23 +193,49 @@ export default function AccountsPage({
     if (!row) return;
     setDeleting(true);
     try {
-      await api.delete(`/api/auth/users/${row.id}?tenant_id=${TENANT_ID}`);
-      notify.success('账号已删除');
+      await api.delete(`/api/enterprise/roles/${row.id}?tenant_id=${TENANT_ID}`);
+      notify.success('角色已删除');
       setDeleteTarget(null);
       await load();
     } catch (error) {
-      notify.error(error instanceof Error ? error.message : '删除账号失败');
+      notify.error(error instanceof Error ? error.message : '删除角色失败');
     } finally {
       setDeleting(false);
     }
   }
 
-  function renderActions(row: EmployeeAccount) {
-    const isProtected = row.role === 'admin';
+  function renderPermissionSummary(row: RoleRead) {
+    if (row.id === ADMIN_ROLE_ID) {
+      return <span className="text-[12px] text-[#858b9c]">全部权限</span>;
+    }
+    if (row.permissions.length === 0) {
+      return <span className="text-[12px] text-[#c0c6d4]">未配置权限</span>;
+    }
+    const names = row.permissions
+      .map((key) => permissionNameByKey.get(key) || key)
+      .slice(0, 3);
+    const rest = row.permissions.length - names.length;
+    return (
+      <span className="flex flex-wrap items-center gap-[4px]">
+        {names.map((name) => (
+          <span
+            key={name}
+            className="inline-flex items-center rounded-[6px] bg-[#f2f3f7] px-[6px] py-[2px] text-[11px] leading-none text-[#464c5e]"
+          >
+            {name}
+          </span>
+        ))}
+        {rest > 0 && <span className="text-[11px] text-[#858b9c]">+{rest}</span>}
+      </span>
+    );
+  }
+
+  function renderActions(row: RoleRead) {
+    if (row.id === ADMIN_ROLE_ID) return null;
     return (
       <DropdownMenu>
         <DropdownMenuTrigger
-          aria-label="账号操作"
+          aria-label="角色操作"
           className="ml-auto grid size-7 place-items-center rounded-[8px] text-[#1a71ff] transition-colors outline-none hover:bg-black/5 hover:text-[#4a8dff] focus-visible:bg-black/5"
         >
           <IconMore className="size-3.5" />
@@ -234,7 +249,7 @@ export default function AccountsPage({
           <DropdownMenuItem
             variant="destructive"
             className={MENU_ITEM_DANGER_CLASS}
-            disabled={isProtected}
+            disabled={row.is_builtin}
             onSelect={() => setDeleteTarget(row)}
           >
             <IconTrash />
@@ -245,35 +260,48 @@ export default function AccountsPage({
     );
   }
 
-  const columns: DataTableColumn<EmployeeAccount>[] = [
+  const columns: DataTableColumn<RoleRead>[] = [
     {
-      key: 'username',
-      title: '用户名',
+      key: 'display_name',
+      title: '角色名称',
       width: 220,
       className: 'text-[#18181a]',
       render: (row) => (
         <span className="flex min-w-0 items-center gap-[8px]">
           <span className="grid size-[24px] shrink-0 place-items-center rounded-full bg-[#eef1fb] text-[#7e96dc]">
-            <User className="size-[14px]" />
+            <ShieldCheck className="size-[14px]" />
           </span>
-          <span className="truncate font-medium">{row.username}</span>
+          <span className="truncate font-medium">{row.display_name}</span>
+          {row.is_builtin && <StatusBadge tone="gray">内置</StatusBadge>}
         </span>
       ),
     },
     {
-      key: 'display_name',
-      title: '显示名',
-      width: 200,
-      render: (row) => <span className="block truncate">{row.display_name || row.username}</span>,
+      key: 'description',
+      title: '描述',
+      width: 240,
+      render: (row) => (
+        <span className="block truncate text-[#464c5e]">{row.description || '-'}</span>
+      ),
     },
     {
-      key: 'role',
-      title: '角色',
-      width: 120,
-      render: (row) => <AccountRoleBadge role={row.role} roleName={roleDisplayName(row)} />,
+      key: 'permissions',
+      title: '权限配置',
+      width: 260,
+      render: (row) => renderPermissionSummary(row),
     },
-    { key: 'created', title: '创建时间', width: 180, render: (row) => formatDateTime(row.created_at) },
-    { key: 'updated', title: '最近更新', width: 180, render: (row) => formatDateTime(row.updated_at) },
+    {
+      key: 'user_count',
+      title: '成员数',
+      width: 90,
+      render: (row) => <span>{row.user_count}</span>,
+    },
+    {
+      key: 'updated',
+      title: '最近更新',
+      width: 170,
+      render: (row) => formatDateTime(row.updated_at),
+    },
     {
       key: 'actions',
       title: '操作',
@@ -283,25 +311,27 @@ export default function AccountsPage({
     },
   ];
 
-  const renderMobileCard = (row: EmployeeAccount) => (
+  const renderMobileCard = (row: RoleRead) => (
     <article className={MOBILE_CARD_CLASS} key={row.id}>
       <div className="flex min-w-0 items-start justify-between gap-[10px]">
         <span className="flex min-w-0 items-center gap-[8px]">
           <span className="grid size-[28px] shrink-0 place-items-center rounded-full bg-[#eef1fb] text-[#7e96dc]">
-            <User className="size-[15px]" />
+            <ShieldCheck className="size-[15px]" />
           </span>
           <span className="min-w-0">
-            <strong className="block truncate text-[14px] font-semibold text-[#18181a]">{row.username}</strong>
-            <span className="mt-[2px] block truncate text-[12px] text-[#858b9c]">{row.display_name || row.username}</span>
-            <span className="mt-[6px] block">
-              <AccountRoleBadge role={row.role} roleName={roleDisplayName(row)} />
+            <strong className="block truncate text-[14px] font-semibold text-[#18181a]">
+              {row.display_name}
+            </strong>
+            <span className="mt-[2px] block truncate text-[12px] text-[#858b9c]">
+              {row.description || '暂无描述'}
             </span>
+            <span className="mt-[6px] block">{renderPermissionSummary(row)}</span>
           </span>
         </span>
         {renderActions(row)}
       </div>
       <div className="mt-[10px] flex items-center justify-between gap-[10px] text-[12px] text-[#858b9c]">
-        <span>创建 {formatDateTime(row.created_at)}</span>
+        <span>成员数 {row.user_count}</span>
         <span>更新 {formatDateTime(row.updated_at)}</span>
       </div>
     </article>
@@ -309,7 +339,7 @@ export default function AccountsPage({
 
   return (
     <div className="min-h-full box-border px-[48px] pt-[32px] pb-[43px] max-[900px]:px-[16px]" aria-busy={loading}>
-      <AppHeader onLogout={onLogout} userName={currentUser?.username} title="账号管理" />
+      <AppHeader onLogout={onLogout} userName={currentUser?.username} title="角色权限" />
 
       <div className="mt-[20px] mb-[16px] flex items-center justify-end gap-[12px]">
         <UIButton
@@ -326,26 +356,23 @@ export default function AccountsPage({
           className="h-[34px] gap-[4px] rounded-[10px] bg-[#18181a] px-[20px] text-[12px] font-normal text-white hover:bg-[#303030]"
         >
           <IconAdd className="size-[14px]" />
-          新建账号
+          新建角色
         </UIButton>
       </div>
 
       <div className="flex flex-col gap-[24px] rounded-[20px_20px_0_0] bg-white p-[18px_18px_24px_18px] shadow-[0_-4px_16px_0_rgba(0,0,0,0.05)]">
         <div className="flex flex-col gap-[18px]">
           <div className="flex items-center gap-[6px] px-[12px] text-[#757f9c]">
-            <IconAccounts className="size-[14px] shrink-0" />
-            <span className="text-[14px] font-normal leading-none">账号列表</span>
+            <IconRoles className="size-[14px] shrink-0" />
+            <span className="text-[14px] font-normal leading-none">角色列表</span>
           </div>
 
           <label className="flex h-[34px] w-[300px] items-center gap-[8px] overflow-hidden rounded-[10px] border-[0.5px] border-[#e3e7f1] bg-white px-[12px] transition-colors focus-within:border-[#18181a] max-[900px]:w-full">
             <IconSearch className="size-[14px] shrink-0 text-[#858b9c]" />
             <input
               autoComplete="off"
-              data-1p-ignore="true"
-              data-lpignore="true"
-              data-bwignore="true"
               value={searchText}
-              placeholder="搜索用户名或显示名"
+              placeholder="搜索角色名称"
               onChange={(event) => setSearchText(event.target.value)}
               className="h-full min-w-0 flex-1 bg-transparent text-[12px] text-[#17191f] outline-none placeholder:text-[#c0c6d4]"
             />
@@ -365,24 +392,24 @@ export default function AccountsPage({
             {filteredRows.length ? (
               pagination.pagedItems.map(renderMobileCard)
             ) : (
-              <div className="py-[40px] text-center text-[13px] text-[#858b9c]">暂无账号</div>
+              <div className="py-[40px] text-center text-[13px] text-[#858b9c]">暂无角色</div>
             )}
           </div>
 
           <div className="hidden md:block">
             <DataTable
-              aria-label="账号列表"
+              aria-label="角色列表"
               columns={columns}
               data={pagination.pagedItems}
               rowKey={(row) => row.id}
               loading={loading}
-              emptyText="暂无账号"
+              emptyText="暂无角色"
             />
           </div>
 
           {filteredRows.length > 0 && (
             <Paginator
-              aria-label="账号分页"
+              aria-label="角色分页"
               className="mt-0 mb-[6px]"
               page={pagination.page}
               pageCount={pagination.pageCount}
@@ -392,40 +419,26 @@ export default function AccountsPage({
         </div>
       </div>
 
-      <AccountDialog
+      <RoleDialog
         open={createOpen}
-        title="新建账号"
+        title="新建角色"
         loading={creating}
         submitText="创建"
-        username={{ value: createDraft.username, onChange: (value) => setCreateDraft((prev) => ({ ...prev, username: value })) }}
-        displayName={createDraft.displayName}
-        onDisplayNameChange={(value) => setCreateDraft((prev) => ({ ...prev, displayName: value }))}
-        password={createDraft.password}
-        onPasswordChange={(value) => setCreateDraft((prev) => ({ ...prev, password: value }))}
-        roles={roles}
-        role={createDraft.role}
-        onRoleChange={(value) => setCreateDraft((prev) => ({ ...prev, role: value }))}
-        passwordLabel="初始密码"
+        draft={draft}
+        onDraftChange={setDraft}
+        catalog={catalog}
         onClose={() => setCreateOpen(false)}
         onSubmit={() => void saveCreate()}
       />
 
-      <AccountDialog
+      <RoleDialog
         open={Boolean(editing)}
-        title={editing ? `编辑账号：${editing.username}` : '编辑账号'}
+        title={editing ? `编辑角色：${editing.display_name}` : '编辑角色'}
         loading={saving}
         submitText="保存"
-        username={null}
-        displayName={draft.displayName}
-        onDisplayNameChange={(value) => setDraft((prev) => ({ ...prev, displayName: value }))}
-        password={draft.password}
-        onPasswordChange={(value) => setDraft((prev) => ({ ...prev, password: value }))}
-        roles={roles}
-        role={draft.role}
-        onRoleChange={(value) => setDraft((prev) => ({ ...prev, role: value }))}
-        roleDisabled={editing?.id === currentUser?.id}
-        passwordLabel="新密码"
-        passwordPlaceholder="不修改请留空"
+        draft={draft}
+        onDraftChange={setDraft}
+        catalog={catalog}
         onClose={() => setEditing(null)}
         onSubmit={() => void saveEdit()}
       />
@@ -434,30 +447,22 @@ export default function AccountsPage({
         open={Boolean(deleteTarget)}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
         loading={deleting}
-        title={deleteTarget ? `删除账号「${deleteTarget.username}」？` : ''}
-        description="删除后该账号无法登录，但其创建的数字员工仍然保留。"
+        title={deleteTarget ? `删除角色「${deleteTarget.display_name}」？` : ''}
+        description="删除前请先将该角色名下的账号改派到其他角色。"
         onConfirm={() => void confirmDelete()}
       />
     </div>
   );
 }
 
-function AccountDialog({
+function RoleDialog({
   open,
   title,
   loading,
   submitText,
-  username,
-  displayName,
-  onDisplayNameChange,
-  password,
-  onPasswordChange,
-  roles,
-  role,
-  onRoleChange,
-  roleDisabled = false,
-  passwordLabel,
-  passwordPlaceholder,
+  draft,
+  onDraftChange,
+  catalog,
   onClose,
   onSubmit,
 }: {
@@ -465,80 +470,98 @@ function AccountDialog({
   title: string;
   loading: boolean;
   submitText: string;
-  username: { value: string; onChange: (value: string) => void } | null;
-  displayName: string;
-  onDisplayNameChange: (value: string) => void;
-  password: string;
-  onPasswordChange: (value: string) => void;
-  roles: RoleSummary[];
-  role: string;
-  onRoleChange: (value: string) => void;
-  roleDisabled?: boolean;
-  passwordLabel: string;
-  passwordPlaceholder?: string;
+  draft: RoleDraft;
+  onDraftChange: (next: RoleDraft) => void;
+  catalog: PermissionDef[];
   onClose: () => void;
   onSubmit: () => void;
 }) {
+  const groups = useMemo(() => {
+    const order: string[] = [];
+    const byGroup = new Map<string, PermissionDef[]>();
+    catalog.forEach((item) => {
+      if (!byGroup.has(item.group)) {
+        byGroup.set(item.group, []);
+        order.push(item.group);
+      }
+      byGroup.get(item.group)!.push(item);
+    });
+    return order.map((group) => ({ group, items: byGroup.get(group)! }));
+  }, [catalog]);
+
+  function togglePermission(key: string) {
+    const selected = new Set(draft.permissions);
+    if (selected.has(key)) selected.delete(key);
+    else selected.add(key);
+    onDraftChange({
+      ...draft,
+      permissions: catalog.filter((item) => selected.has(item.key)).map((item) => item.key),
+    });
+  }
+
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogContent
         aria-describedby={undefined}
-        className="flex w-[calc(100%-2rem)] flex-col gap-[16px] overflow-hidden rounded-[14px] px-[20px] py-[16px] sm:max-w-[440px]"
+        className="flex w-[calc(100%-2rem)] flex-col gap-[16px] overflow-hidden rounded-[14px] px-[20px] py-[16px] sm:max-w-[520px]"
       >
         <div className="flex items-center gap-[6px] px-[12px] text-[#757f9c]">
-          <IconAccounts className="size-[14px] shrink-0" />
+          <IconRoles className="size-[14px] shrink-0" />
           <DialogTitle className="text-[14px] font-normal leading-none text-[#757f9c]">
             {title}
           </DialogTitle>
         </div>
 
-        <div className="flex flex-col gap-[14px] px-[12px]">
-          {username && (
-            <LabeledField label="用户名">
-              <Input
-                value={username.value}
-                placeholder="例如 zhang_san"
-                onChange={(event) => username.onChange(event.target.value)}
-              />
-            </LabeledField>
-          )}
-          <LabeledField label="显示名">
+        <div className="flex max-h-[60vh] flex-col gap-[14px] overflow-y-auto px-[12px]">
+          <LabeledField label="角色名称">
             <Input
-              value={displayName}
-              placeholder="例如 张三"
-              onChange={(event) => onDisplayNameChange(event.target.value)}
+              value={draft.displayName}
+              placeholder="例如 客服主管"
+              maxLength={40}
+              onChange={(event) => onDraftChange({ ...draft, displayName: event.target.value })}
             />
           </LabeledField>
-          <LabeledField label={passwordLabel}>
-            <Input
-              type="password"
-              value={password}
-              placeholder={passwordPlaceholder}
-              onChange={(event) => onPasswordChange(event.target.value)}
+          <LabeledField label="描述">
+            <Textarea
+              value={draft.description}
+              placeholder="选填，说明该角色的职责范围"
+              maxLength={200}
+              className="min-h-[64px] resize-y"
+              onChange={(event) => onDraftChange({ ...draft, description: event.target.value })}
             />
           </LabeledField>
-          <LabeledField label="账号角色">
-            <Select
-              value={role}
-              disabled={roleDisabled}
-              onValueChange={(value) => onRoleChange(value)}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {roles.map((item) => (
-                  <SelectItem key={item.id} value={item.id}>
-                    {item.display_name}
-                  </SelectItem>
-                ))}
-                {roles.length > 0 && !roles.some((item) => item.id === role) && (
-                  <SelectItem value={role}>{role}</SelectItem>
-                )}
-                {roles.length === 0 && <SelectItem value={role}>{role}</SelectItem>}
-              </SelectContent>
-            </Select>
-          </LabeledField>
+          <div className="flex flex-col gap-[10px]">
+            <span className="text-[12px] font-medium text-[#464c5e]">权限配置</span>
+            {groups.map(({ group, items }) => (
+              <fieldset
+                key={group}
+                className="flex flex-col gap-[6px] rounded-[10px] border-[0.5px] border-[#eef0f4] p-[10px]"
+              >
+                <legend className="px-[6px] text-[11px] text-[#858b9c]">{group}</legend>
+                {items.map((item) => {
+                  const checked = draft.permissions.includes(item.key);
+                  return (
+                    <label
+                      key={item.key}
+                      className="flex cursor-pointer items-start gap-[8px] rounded-[8px] px-[6px] py-[4px] transition-colors hover:bg-[#f6f6f6]"
+                    >
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={() => togglePermission(item.key)}
+                        className="mt-[2px]"
+                      />
+                      <span className="flex min-w-0 flex-col gap-[2px]">
+                        <span className="text-[12px] leading-none text-[#18181a]">{item.name}</span>
+                        <span className="text-[11px] leading-[16px] text-[#858b9c]">
+                          {item.description}
+                        </span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </fieldset>
+            ))}
+          </div>
         </div>
 
         <div className="flex items-center justify-end gap-[8px] px-[12px]">

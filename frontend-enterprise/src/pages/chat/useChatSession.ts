@@ -21,7 +21,12 @@ import {
   uploadChatAttachments,
   type StreamEvent,
 } from '@/api/client';
-import { clearEnterpriseAuthSession, getEnterpriseAuthSession } from '@/auth';
+import {
+  ENTERPRISE_PERMISSIONS,
+  clearEnterpriseAuthSession,
+  getEnterpriseAuthSession,
+  userHasPermission,
+} from '@/auth';
 import { emitAgentScopeChange, persistSharedAgentScope } from '@/lib/agent-scope-storage';
 import { getClientTimeZone } from '@/lib/timezone';
 import {
@@ -553,7 +558,10 @@ export function useChatSession(options: UseChatSessionOptions = {}) {
     || enabledModelConfigs[0]
     || null
   );
-  const canConfigureModels = auth?.user.role === 'admin';
+  const canConfigureModels = userHasPermission(
+    auth?.user,
+    ENTERPRISE_PERMISSIONS.modelConfigs,
+  );
   const showModelSetupNotice = !modelConfigsLoading && !modelConfigsLoadError && !selectedModelConfig;
   const modelSetupNoticeText = canConfigureModels
     ? t('还没有可用模型配置，发送消息前请先完成模型配置。')

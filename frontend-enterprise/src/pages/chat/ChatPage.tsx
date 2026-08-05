@@ -3,6 +3,10 @@ import { type CSSProperties } from 'react';
 import AppSidebar from '@/components/AppSidebar';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { cn } from '@/lib/utils';
+import {
+  getEnterpriseAuthSession,
+  hasAnyEnterpriseManagementPermission,
+} from '@/auth';
 
 import { CHAT_MAIN_CLASS } from './chatPageStyles';
 import { sessionHasUnreadReply } from './chatHelpers';
@@ -14,6 +18,8 @@ import ChatDialogs from './components/ChatDialogs';
 
 export default function ChatPage() {
   const chat = useChatSession();
+  const auth = getEnterpriseAuthSession();
+  const canAccessAdmin = hasAnyEnterpriseManagementPermission(auth?.user);
 
   return (
     <SidebarProvider
@@ -52,7 +58,7 @@ export default function ChatPage() {
         onOpenHandoffs={chat.openHandoffInbox}
         onRenameSession={chat.openRename}
         onDeleteSession={chat.requestDelete}
-        onOpenAdmin={chat.openAdmin}
+        onOpenAdmin={canAccessAdmin ? chat.openAdmin : undefined}
       />
       <main className={cn(CHAT_MAIN_CLASS, 'flex-1')}>
         <ChatHeader chat={chat} />

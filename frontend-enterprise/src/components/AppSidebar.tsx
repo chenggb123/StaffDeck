@@ -22,6 +22,7 @@ import EmployeeAvatar from './EmployeeAvatar';
 import BrandLogo from './BrandLogo';
 import StaffdeckIcon from './StaffdeckIcon';
 import { employeeDisplayNameWithCreator, employeeProfile, staffdeckDisplayText } from '../employee';
+import { ENTERPRISE_PERMISSIONS, userHasPermission, type EnterpriseAuthUser } from '../auth';
 import { EnterpriseRoute } from '../enums/routes';
 import type { AgentProfileRead, ChatSession } from '../types';
 import IconPlatform from '../assets/icons/nav-platform.svg?react';
@@ -39,6 +40,7 @@ import IconToggle from '../assets/icons/action-toggle.svg?react';
 import IconHeaderCollapse from '../assets/icons/header-collapse.svg?react';
 import IconAccounts from '../assets/icons/sys-accounts.svg?react';
 import IconModels from '../assets/icons/sys-models.svg?react';
+import IconRoles from '../assets/icons/sys-roles.svg?react';
 import IconChevronDown from '../assets/icons/chevron-down.svg?react';
 import IconAdd from '../assets/icons/add.svg?react';
 import IconSort from '../assets/icons/sort.svg?react';
@@ -54,6 +56,8 @@ type NavItem = {
   route: EnterpriseRoute;
   label: string;
   Icon: IconComponent;
+  /** 可见性权限点;缺省为任意登录用户可见 */
+  permission?: string;
 };
 
 const PRIMARY_NAV: NavItem[] = [
@@ -77,19 +81,21 @@ const CAPABILITY_NAV: NavItem[] = [
 ];
 
 const SYSTEM_NAV: NavItem[] = [
-  { route: EnterpriseRoute.Accounts, label: '账号管理', Icon: IconAccounts },
-  { route: EnterpriseRoute.Models, label: '模型配置', Icon: IconModels },
+  { route: EnterpriseRoute.Accounts, label: '账号管理', Icon: IconAccounts, permission: ENTERPRISE_PERMISSIONS.accounts },
+  { route: EnterpriseRoute.Roles, label: '角色权限', Icon: IconRoles, permission: ENTERPRISE_PERMISSIONS.roles },
+  { route: EnterpriseRoute.Models, label: '模型配置', Icon: IconModels, permission: ENTERPRISE_PERMISSIONS.modelConfigs },
 ];
 
-function primaryNavItems(isAdmin: boolean): NavItem[] {
-  return isAdmin ? [...PRIMARY_NAV, ...SYSTEM_NAV] : PRIMARY_NAV;
+function primaryNavItems(user?: EnterpriseAuthUser | null): NavItem[] {
+  const systemItems = SYSTEM_NAV.filter((item) => userHasPermission(user, item.permission!));
+  return [...PRIMARY_NAV, ...systemItems];
 }
 
 export type AppSidebarManagementProps = {
   variant?: 'management';
   selected: string;
   onNavigate: (route: string) => void;
-  isAdmin: boolean;
+  user?: EnterpriseAuthUser | null;
   sidebarAgent?: AgentProfileRead;
   scopeAgents: AgentProfileRead[];
   selectedAgentId: string;
@@ -122,7 +128,7 @@ export type AppSidebarChatProps = {
   onOpenHandoffs?: () => void;
   onRenameSession: (session: ChatSession) => void;
   onDeleteSession: (session: ChatSession) => void;
-  onOpenAdmin: () => void;
+  onOpenAdmin?: () => void;
 };
 
 export type AppSidebarProps = AppSidebarManagementProps | AppSidebarChatProps;
@@ -423,7 +429,7 @@ function CollapsedAgentSwitcher({
 function CollapsedSidebar({
   selected,
   onNavigate,
-  isAdmin,
+  user,
   sidebarAgent,
   scopeAgents,
   selectedAgentId,
@@ -433,14 +439,14 @@ function CollapsedSidebar({
   modelSetupAttention,
 }: Pick<
   AppSidebarManagementProps,
-  'selected' | 'onNavigate' | 'isAdmin' | 'sidebarAgent' | 'scopeAgents' | 'selectedAgentId' | 'onSelectAgent' | 'onOpenChat' | 'modelSetupAttention'
+  'selected' | 'onNavigate' | 'user' | 'sidebarAgent' | 'scopeAgents' | 'selectedAgentId' | 'onSelectAgent' | 'onOpenChat' | 'modelSetupAttention'
 > & { onToggle: () => void }) {
   const nameLabel = sidebarAgent
     ? sidebarAgent.is_overall
       ? '未选择'
       : employeeDisplayNameWithCreator(sidebarAgent)
     : '未选择';
-  const primaryItems = primaryNavItems(isAdmin);
+  const primaryItems = primaryNavItems(user);
 
   return (
     <div className="flex h-full w-(--sidebar-width-icon) shrink-0 flex-col items-center gap-[32px] px-[16px] py-[10px]">
@@ -544,7 +550,7 @@ function CollapsedSidebar({
 function ManagementSidebar({
   selected,
   onNavigate,
-  isAdmin,
+  user,
   sidebarAgent,
   scopeAgents,
   selectedAgentId,
@@ -554,7 +560,7 @@ function ManagementSidebar({
 }: AppSidebarManagementProps) {
   const { toggleSidebar, state } = useSidebar();
   const brandCollapsed = useMemo(() => state === 'collapsed', [state]);
-  const primaryItems = useMemo(() => primaryNavItems(isAdmin), [isAdmin]);
+  const primaryItems = useMemo(() => primaryNavItems(user), [user]);
 
   if (brandCollapsed) {
     return (
@@ -562,7 +568,7 @@ function ManagementSidebar({
         <CollapsedSidebar
           selected={selected}
           onNavigate={onNavigate}
-          isAdmin={isAdmin}
+          user={user}
           sidebarAgent={sidebarAgent}
           scopeAgents={scopeAgents}
           selectedAgentId={selectedAgentId}
@@ -928,7 +934,8 @@ function ChatSessionSkeletonList({ rows = 5 }: { rows?: number }) {
   );
 }
 
-function ChatFooterActions({ onOpenAdmin }: { onOpenAdmin: () => void }) {
+function ChatFooterActions({ onOpenAdmin }: { onOpenAdmin?: () => void }) {
+  if (!onOpenAdmin) return null;
   return (
     <div className="flex items-center justify-center gap-[10px] pb-[20px]">
       <button
@@ -1094,23 +1101,25 @@ function CollapsedChatSidebar({
         </div>
       </div>
 
-      <div className="flex items-center justify-center pb-[20px]">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              onClick={onOpenAdmin}
-              aria-label="切换到管理端"
-              className="flex size-[32px] shrink-0 items-center justify-center rounded-[10px] border-[0.5px] border-[#E3E7F1] bg-[#F6F6F6] text-[#858b9c] transition-opacity hover:opacity-70"
-            >
-              <IconViewMasonry className="size-[16px]!" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="right" align="center">
-            切换到管理端
-          </TooltipContent>
-        </Tooltip>
-      </div>
+      {onOpenAdmin && (
+        <div className="flex items-center justify-center pb-[20px]">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={onOpenAdmin}
+                aria-label="切换到管理端"
+                className="flex size-[32px] shrink-0 items-center justify-center rounded-[10px] border-[0.5px] border-[#E3E7F1] bg-[#F6F6F6] text-[#858b9c] transition-opacity hover:opacity-70"
+              >
+                <IconViewMasonry className="size-[16px]!" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right" align="center">
+              切换到管理端
+            </TooltipContent>
+          </Tooltip>
+        </div>
+      )}
     </div>
   );
 }

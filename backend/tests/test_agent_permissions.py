@@ -35,8 +35,9 @@ from app.db.models import (
 )
 from app.general_skills.schema import GeneralSkillImportRequest
 from app.security.permissions import (
+    PERM_SYSTEM_SETTINGS,
     ensure_agent_scope_manager,
-    ensure_tenant_admin,
+    ensure_permission,
     require_agent_scope_viewer,
 )
 from app.tools.tool_schema import ToolCreateRequest, ToolUpdateRequest
@@ -318,15 +319,15 @@ def test_agent_scope_viewer_allows_owned_and_gallery_but_blocks_private_agents()
         assert tenant_error.value.status_code == 403
 
 
-def test_tenant_settings_require_an_administrator() -> None:
+def test_permission_guard_requires_tenant_and_permission() -> None:
     with _test_session() as db:
         owner, _, admin = _seed_users(db)
-        assert ensure_tenant_admin("tenant_demo", admin) is admin
+        assert ensure_permission(db, "tenant_demo", admin, PERM_SYSTEM_SETTINGS) is admin
         with pytest.raises(HTTPException) as role_error:
-            ensure_tenant_admin("tenant_demo", owner)
+            ensure_permission(db, "tenant_demo", owner, PERM_SYSTEM_SETTINGS)
         assert role_error.value.status_code == 403
         with pytest.raises(HTTPException) as tenant_error:
-            ensure_tenant_admin("another_tenant", admin)
+            ensure_permission(db, "another_tenant", admin, PERM_SYSTEM_SETTINGS)
         assert tenant_error.value.status_code == 403
 
 

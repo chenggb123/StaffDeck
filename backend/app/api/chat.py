@@ -55,7 +55,8 @@ from app.observability.spans import (
     set_span_sink,
 )
 from app.security.auth import get_current_user
-from app.security.permissions import agent_owned_by_user, is_admin_user
+from app.security.permissions import PERM_AGENTS_GLOBAL, PERM_CHAT_OPS, agent_owned_by_user
+from app.security.rbac import user_has_permission
 from app.security.tenant import ensure_tenant
 from app.harness import (
     HarnessArtifactAccessError,
@@ -2003,7 +2004,7 @@ def list_human_handoffs(
     stmt = select(HumanHandoffRequest).where(HumanHandoffRequest.tenant_id == tenant_id)
     if status != "all":
         stmt = stmt.where(HumanHandoffRequest.status == status)
-    if not is_admin_user(current_user):
+    if not user_has_permission(db, current_user, PERM_CHAT_OPS):
         if status == "pending":
             stmt = stmt.where(
                 or_(
@@ -2033,7 +2034,7 @@ def reply_human_handoff(
     row = db.get(HumanHandoffRequest, handoff_id)
     if not row or row.tenant_id != request.tenant_id:
         raise HTTPException(status_code=404, detail="Handoff request not found")
-    if not is_admin_user(current_user) and row.assignee_user_id not in {None, current_user.id}:
+    if not user_has_permission(db, current_user, PERM_CHAT_OPS) and row.assignee_user_id not in {None, current_user.id}:
         raise HTTPException(status_code=403, detail="Handoff request not assigned to current user")
     reply = request.reply.strip()
     if not reply:
@@ -2304,7 +2305,7 @@ def _user_can_read_handoff_session(db: Session, tenant_id: str, current_user: Us
         HumanHandoffRequest.tenant_id == tenant_id,
         HumanHandoffRequest.session_id == session_id,
     )
-    if not is_admin_user(current_user):
+    if not user_has_permission(db, current_user, PERM_CHAT_OPS):
         statement = statement.where(
             or_(
                 HumanHandoffRequest.assignee_user_id == current_user.id,
@@ -2327,7 +2328,7 @@ def _ensure_chat_agent_available(
     row = db.get(AgentProfile, agent_id)
     if not row or row.tenant_id != tenant_id or row.status != "active" or row.is_overall:
         raise HTTPException(status_code=404, detail="Agent not available")
-    if not _chat_agent_visible_to_user(row, current_user):
+    if not _chat_agent_visible_to_user(db, row, current_user):
         raise HTTPException(status_code=403, detail="Agent not available")
     return row
 
@@ -2810,8 +2811,8 @@ def _ensure_request_tenant(tenant_id: str, current_user: User) -> None:
         raise HTTPException(status_code=403, detail="Tenant mismatch")
 
 
-def _chat_agent_visible_to_user(row: AgentProfile, user: User) -> bool:
-    if is_admin_user(user):
+def _chat_agent_visible_to_user(db: Session, row: AgentProfile, user: User) -> bool:
+    if user_has_permission(db, user, PERM_AGENTS_GLOBAL):
         return True
     metadata = row.metadata_json or {}
     return agent_owned_by_user(row, user) or metadata.get("published_to_gallery") is True

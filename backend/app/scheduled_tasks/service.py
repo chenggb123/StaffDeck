@@ -42,7 +42,8 @@ from app.scheduled_tasks.schema import (
 )
 from app.session.session_schema import ChatTurnRequest, ChatTurnResponse
 from app.security.permissions import agent_owned_by_user as _agent_owned_by_user
-from app.security.permissions import is_admin_user as _is_admin_user
+from app.security.permissions import PERM_SCHEDULED_TASKS
+from app.security.rbac import user_has_permission
 from app.security.tenant import ensure_tenant
 
 
@@ -197,7 +198,7 @@ def update_scheduled_task(
     request: ScheduledTaskUpdateRequest,
     current_user: User,
 ) -> ScheduledTask:
-    _ensure_task_access(row, current_user)
+    _ensure_task_access(db, row, current_user)
     if request.agent_id is not None and request.agent_id != row.agent_id:
         _ensure_agent_access(db, request.tenant_id, request.agent_id, current_user)
         row.agent_id = request.agent_id
@@ -980,7 +981,7 @@ def _ensure_agent_access(db: Session, tenant_id: str, agent_id: str, current_use
     agent = db.get(AgentProfile, agent_id)
     if not agent or agent.tenant_id != tenant_id or agent.is_overall or agent.status != "active":
         raise HTTPException(status_code=404, detail="员工不可用")
-    if _is_admin_user(current_user):
+    if user_has_permission(db, current_user, PERM_SCHEDULED_TASKS):
         return agent
     metadata = agent.metadata_json or {}
     owns_agent = _agent_owned_by_user(agent, current_user)
@@ -990,8 +991,8 @@ def _ensure_agent_access(db: Session, tenant_id: str, agent_id: str, current_use
     return agent
 
 
-def _ensure_task_access(row: ScheduledTask, current_user: User) -> None:
-    if _is_admin_user(current_user):
+def _ensure_task_access(db: Session, row: ScheduledTask, current_user: User) -> None:
+    if user_has_permission(db, current_user, PERM_SCHEDULED_TASKS):
         return
     if row.created_by_user_id != current_user.id:
         raise HTTPException(status_code=403, detail="无权访问该自动任务")

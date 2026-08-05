@@ -22,6 +22,7 @@ from app.db.models import (
 )
 from app.security.encryption import encrypt_secret
 from app.security.auth import hash_password
+from app.security.rbac import ensure_builtin_roles
 from app.db.staffdeck_seed import seed_staffdeck_admin_gallery
 
 
@@ -839,6 +840,9 @@ def seed_demo_data(session: Session) -> None:
     settings = get_settings()
     if not session.get(Tenant, "tenant_demo"):
         session.add(Tenant(id="tenant_demo", name="Demo Enterprise"))
+
+    # RBAC 内置角色(admin 全权限/member 可配置)先于用户就位
+    ensure_builtin_roles(session, "tenant_demo")
 
     if not session.get(PersonaConfig, "tenant_demo"):
         session.add(PersonaConfig(tenant_id="tenant_demo", system_prompt=DEFAULT_PERSONA_PROMPT))

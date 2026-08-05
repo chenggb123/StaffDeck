@@ -165,7 +165,7 @@ def create_knowledge_base(
         raise HTTPException(status_code=409, detail="Knowledge base name already exists")
     agent = ensure_agent_scope_manager(db, request.tenant_id, agent_id, current_user)
     if not (agent and not agent.is_overall):
-        ensure_open_gallery_admin(request.tenant_id, current_user)
+        ensure_open_gallery_admin(db, request.tenant_id, current_user)
     creator_metadata = user_creator_metadata(current_user, request.metadata)
     row = KnowledgeBase(
         tenant_id=request.tenant_id,
@@ -321,7 +321,7 @@ def update_knowledge_base(
                 "status": branch.status,
             },
         )
-    ensure_open_gallery_admin(request.tenant_id, current_user)
+    ensure_open_gallery_admin(db, request.tenant_id, current_user)
     version = ensure_knowledge_base_version(db, row)
     if request.name is not None:
         name = request.name.strip()
@@ -613,11 +613,11 @@ def delete_knowledge_base(
             raise HTTPException(
                 status_code=404, detail="Knowledge base not visible in open gallery"
             )
-        ensure_open_gallery_admin(tenant_id, current_user)
+        ensure_open_gallery_admin(db, tenant_id, current_user)
         hide_open_gallery_binding(db, tenant_id, "knowledge_base", row.id)
         db.commit()
         return {"status": "hidden"}
-    ensure_open_gallery_admin(tenant_id, current_user)
+    ensure_open_gallery_admin(db, tenant_id, current_user)
     for model in (
         KnowledgeDiscoverySuggestion,
         KnowledgeIngestJob,
@@ -687,7 +687,7 @@ def promote_knowledge_base_to_overall(
         raise HTTPException(
             status_code=400, detail="Overall agent does not have a branch to promote"
         )
-    ensure_open_gallery_admin(tenant_id, current_user)
+    ensure_open_gallery_admin(db, tenant_id, current_user)
     version = promote_knowledge_branch_to_overall(db, tenant_id, agent_id, knowledge_base_id)
     db.commit()
     return {
@@ -814,7 +814,7 @@ def _writable_knowledge_version(
         )
         db.commit()
         return version
-    ensure_open_gallery_admin(tenant_id, current_user)
+    ensure_open_gallery_admin(db, tenant_id, current_user)
     return _visible_knowledge_version(db, tenant_id, knowledge_base_id, agent_id)
 
 

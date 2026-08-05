@@ -62,7 +62,8 @@ from app.db.models import (
 )
 from app.security.auth import get_current_user
 from app.security.permissions import agent_owned_by_user as _agent_owned_by_user
-from app.security.permissions import is_admin_user as _is_admin_user
+from app.security.permissions import PERM_AGENTS_GLOBAL
+from app.security.rbac import user_has_permission
 from app.security.tenant import ensure_tenant
 
 IMPORT_LOCK_RETRY_ATTEMPTS = 2
@@ -99,11 +100,11 @@ def list_agents(
         .order_by(AgentProfile.is_overall.desc(), AgentProfile.updated_at.desc())
     ).all()
     rows = [row for row in rows if not _agent_hidden_from_staffdeck(row)]
-    if not _is_admin_user(user):
+    if not user_has_permission(db, user, PERM_AGENTS_GLOBAL):
         # Non-admin users still need the overall agent as a read-only open-gallery
         # source for copy/use flows. Mutations remain guarded by manage/update
         # endpoints, so this only exposes the source scope.
-        rows = [row for row in rows if row.is_overall or _agent_visible_to_user(row, user)]
+        rows = [row for row in rows if row.is_overall or _agent_visible_to_user(db, row, user)]
     bindings = _bindings_by_agent(db, tenant_id)
     used_agent_ids = _used_agent_ids_for_user(db, tenant_id, user)
     return [agent_read(row, bindings.get(row.id, []), row.id in used_agent_ids) for row in rows]
@@ -118,7 +119,7 @@ def create_agent(
     ensure_tenant(db, request.tenant_id)
     user = current_user
     _ensure_request_tenant(request.tenant_id, user)
-    if request.is_overall and not _is_admin_user(user):
+    if request.is_overall and not user_has_permission(db, user, PERM_AGENTS_GLOBAL):
         raise HTTPException(status_code=403, detail="Only administrator can create overall agent")
     name = str(request.name or "").strip()
     if not name:
@@ -147,7 +148,7 @@ def create_agent(
             pass
         elif copy_from_agent_id:
             source_agent = _get_agent(db, request.tenant_id, copy_from_agent_id)
-            _ensure_can_copy_from_agent(source_agent, user)
+            _ensure_can_copy_from_agent(db, source_agent, user)
             if not row.persona_prompt:
                 row.persona_prompt = source_agent.persona_prompt
             _copy_agent_scope_from_source(db, request.tenant_id, source_agent, row)
@@ -171,7 +172,7 @@ def get_agent(
     current_user: User = Depends(get_current_user),
 ) -> AgentProfileRead:
     row = _get_agent(db, tenant_id, agent_id)
-    _ensure_can_access_agent(row, current_user)
+    _ensure_can_access_agent(db, row, current_user)
     return agent_read(row, _bindings_by_agent(db, tenant_id).get(row.id, []))
 
 
@@ -184,7 +185,7 @@ def get_agent_work_record(
     current_user: User = Depends(get_current_user),
 ) -> AgentWorkRecordRead:
     agent = _get_agent(db, tenant_id, agent_id)
-    _ensure_can_access_agent(agent, current_user)
+    _ensure_can_access_agent(db, agent, current_user)
     try:
         local_timezone = ZoneInfo(timezone)
     except (ZoneInfoNotFoundError, ValueError) as exc:
@@ -244,7 +245,7 @@ def update_agent(
 ) -> AgentProfileRead:
     row = _get_agent(db, request.tenant_id, agent_id)
     user = current_user
-    _ensure_can_manage_agent(row, user)
+    _ensure_can_manage_agent(db, row, user)
     if request.name is not None:
         name = request.name.strip()
         if not name:
@@ -284,7 +285,7 @@ def delete_agent(
     current_user: User = Depends(get_current_user),
 ) -> dict[str, str]:
     row = _get_agent(db, tenant_id, agent_id)
-    _ensure_can_manage_agent(row, current_user)
+    _ensure_can_manage_agent(db, row, current_user)
     if row.is_overall:
         raise HTTPException(status_code=400, detail="Overall agent cannot be deleted")
     bindings = db.exec(
@@ -304,7 +305,7 @@ def get_agent_resources(
     db: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> list[AgentResourceBindingRead]:
-    _ensure_can_access_agent(_get_agent(db, tenant_id, agent_id), current_user)
+    _ensure_can_access_agent(db, _get_agent(db, tenant_id, agent_id), current_user)
     rows = db.exec(
         select(AgentResourceBinding)
         .where(
@@ -323,7 +324,7 @@ def update_agent_resources(
     current_user: User = Depends(get_current_user),
 ) -> list[AgentResourceBindingRead]:
     agent = _get_agent(db, request.tenant_id, agent_id)
-    _ensure_can_manage_agent(agent, current_user)
+    _ensure_can_manage_agent(db, agent, current_user)
     if agent.is_overall:
         raise HTTPException(status_code=400, detail="Overall agent uses the global resource pool")
     existing = db.exec(
@@ -387,8 +388,8 @@ def _import_agent_resources_once(
     target_agent = _get_agent(db, request.tenant_id, agent_id)
     source_agent = _get_agent(db, request.tenant_id, request.source_agent_id)
     user = current_user
-    _ensure_can_import_to_agent(target_agent, user)
-    _ensure_can_copy_from_agent(source_agent, user)
+    _ensure_can_import_to_agent(db, target_agent, user)
+    _ensure_can_copy_from_agent(db, source_agent, user)
     if source_agent.id == target_agent.id:
         raise HTTPException(status_code=400, detail="Source and target agent cannot be the same")
     resource_ids = _dedupe_ids(request.resource_ids)
@@ -457,7 +458,7 @@ def get_agent_skills(
     db: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> list[dict[str, object]]:
-    _ensure_can_access_agent(_get_agent(db, tenant_id, agent_id), current_user)
+    _ensure_can_access_agent(db, _get_agent(db, tenant_id, agent_id), current_user)
     return [
         _skill_branch_read(skill)
         for skill in visible_skill_rows(db, tenant_id, agent_id, include_inactive=True)
@@ -473,7 +474,7 @@ def sync_agent_skill_from_overall(
     current_user: User = Depends(get_current_user),
 ) -> dict[str, object]:
     agent = _get_agent(db, tenant_id, agent_id)
-    _ensure_can_manage_agent(agent, current_user)
+    _ensure_can_manage_agent(db, agent, current_user)
     if agent.is_overall:
         raise HTTPException(status_code=400, detail="Overall agent is already the trunk")
     skill = _get_global_skill(db, tenant_id, skill_id)
@@ -494,7 +495,7 @@ def promote_agent_skill_to_overall(
     db: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> dict[str, object]:
-    _ensure_admin_user(tenant_id, current_user)
+    _ensure_admin_user(db, tenant_id, current_user)
     agent = _get_agent(db, tenant_id, agent_id)
     if agent.is_overall:
         raise HTTPException(
@@ -523,7 +524,7 @@ def rollback_agent_skill(
     current_user: User = Depends(get_current_user),
 ) -> dict[str, object]:
     agent = _get_agent(db, request.tenant_id, agent_id)
-    _ensure_can_manage_agent(agent, current_user)
+    _ensure_can_manage_agent(db, agent, current_user)
     if agent.is_overall:
         raise HTTPException(
             status_code=400, detail="Use the global skill rollback endpoint for overall agent"
@@ -541,7 +542,7 @@ def list_agent_skill_versions(
     db: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> list[dict[str, object]]:
-    _ensure_can_access_agent(_get_agent(db, tenant_id, agent_id), current_user)
+    _ensure_can_access_agent(db, _get_agent(db, tenant_id, agent_id), current_user)
     return [
         {
             "id": row.id,
@@ -568,7 +569,7 @@ def update_agent_models(
     db: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> dict[str, object]:
-    _ensure_can_manage_agent(_get_agent(db, request.tenant_id, agent_id), current_user)
+    _ensure_can_manage_agent(db, _get_agent(db, request.tenant_id, agent_id), current_user)
     for item in request.bindings:
         existing = db.exec(
             select(AgentModelBinding).where(
@@ -615,7 +616,7 @@ def list_chat_agents(
     rows = [row for row in rows if not _agent_hidden_from_staffdeck(row)]
     used_agent_ids = _used_agent_ids_for_user(db, tenant_id, current_user)
     rows = [
-        row for row in rows if _chat_agent_selectable_to_user(row, current_user, used_agent_ids)
+        row for row in rows if _chat_agent_selectable_to_user(db, row, current_user, used_agent_ids)
     ]
     bindings = _bindings_by_agent(db, tenant_id)
     return [agent_read(row, bindings.get(row.id, []), row.id in used_agent_ids) for row in rows]
@@ -635,7 +636,7 @@ def use_chat_agent(
     if (
         row.is_overall
         or row.status != "active"
-        or not _chat_agent_visible_to_user(row, current_user)
+        or not _chat_agent_visible_to_user(db, row, current_user)
     ):
         raise HTTPException(status_code=403, detail="Cannot access this agent")
     _mark_agent_used(db, tenant_id, current_user, row.id)
@@ -769,7 +770,7 @@ def _agent_scheduled_task_timeline_events(
         ScheduledTask.agent_id == agent_id,
         ScheduledTask.status != "archived",
     ]
-    if not _is_admin_user(current_user):
+    if not user_has_permission(db, current_user, PERM_AGENTS_GLOBAL):
         conditions.append(ScheduledTask.created_by_user_id == current_user.id)
     tasks = db.exec(select(ScheduledTask).where(*conditions)).all()
     events: list[AgentWorkRecordEventRead] = []
@@ -832,10 +833,10 @@ def _ensure_request_tenant(tenant_id: str, user: User) -> None:
         raise HTTPException(status_code=403, detail="Tenant mismatch")
 
 
-def _agent_visible_to_user(row: AgentProfile, user: User) -> bool:
+def _agent_visible_to_user(db: Session, row: AgentProfile, user: User) -> bool:
     if _agent_hidden_from_staffdeck(row):
         return False
-    if _is_admin_user(user):
+    if user_has_permission(db, user, PERM_AGENTS_GLOBAL):
         return True
     if row.is_overall:
         return True
@@ -899,32 +900,32 @@ def _mark_agent_used(db: Session, tenant_id: str, user: User, agent_id: str) -> 
     return row
 
 
-def _chat_agent_selectable_to_user(row: AgentProfile, user: User, used_agent_ids: set[str]) -> bool:
+def _chat_agent_selectable_to_user(db: Session, row: AgentProfile, user: User, used_agent_ids: set[str]) -> bool:
     if row.is_overall:
         return False
     if _agent_owned_by_user(row, user):
         return True
     if _agent_published_to_gallery(row):
         return row.id in used_agent_ids
-    return _is_admin_user(user)
+    return user_has_permission(db, user, PERM_AGENTS_GLOBAL)
 
 
-def _ensure_can_access_agent(row: AgentProfile, user: User) -> None:
+def _ensure_can_access_agent(db: Session, row: AgentProfile, user: User) -> None:
     _ensure_request_tenant(row.tenant_id, user)
-    if not _agent_visible_to_user(row, user):
+    if not _agent_visible_to_user(db, row, user):
         raise HTTPException(status_code=403, detail="Cannot access this agent")
 
 
-def _ensure_can_copy_from_agent(row: AgentProfile, user: User) -> None:
+def _ensure_can_copy_from_agent(db: Session, row: AgentProfile, user: User) -> None:
     _ensure_request_tenant(row.tenant_id, user)
-    if row.is_overall or _agent_visible_to_user(row, user):
+    if row.is_overall or _agent_visible_to_user(db, row, user):
         return
     raise HTTPException(status_code=403, detail="Cannot copy resources from this agent")
 
 
-def _ensure_can_manage_agent(row: AgentProfile, user: User) -> None:
+def _ensure_can_manage_agent(db: Session, row: AgentProfile, user: User) -> None:
     _ensure_request_tenant(row.tenant_id, user)
-    if _is_admin_user(user):
+    if user_has_permission(db, user, PERM_AGENTS_GLOBAL):
         return
     if row.is_overall:
         raise HTTPException(status_code=403, detail="Only administrator can manage overall agent")
@@ -935,16 +936,16 @@ def _ensure_can_manage_agent(row: AgentProfile, user: User) -> None:
     )
 
 
-def _ensure_can_import_to_agent(row: AgentProfile, user: User) -> None:
+def _ensure_can_import_to_agent(db: Session, row: AgentProfile, user: User) -> None:
     if row.is_overall:
-        _ensure_admin_user(row.tenant_id, user)
+        _ensure_admin_user(db, row.tenant_id, user)
         return
-    _ensure_can_manage_agent(row, user)
+    _ensure_can_manage_agent(db, row, user)
 
 
-def _ensure_admin_user(tenant_id: str, user: User) -> None:
+def _ensure_admin_user(db: Session, tenant_id: str, user: User) -> None:
     _ensure_request_tenant(tenant_id, user)
-    if not _is_admin_user(user):
+    if not user_has_permission(db, user, PERM_AGENTS_GLOBAL):
         raise HTTPException(
             status_code=403, detail="Only administrator can update the open gallery"
         )
@@ -986,8 +987,8 @@ def _metadata_preserving_creator(
     return normalized
 
 
-def _chat_agent_visible_to_user(row: AgentProfile, user: User) -> bool:
-    return _agent_visible_to_user(row, user)
+def _chat_agent_visible_to_user(db: Session, row: AgentProfile, user: User) -> bool:
+    return _agent_visible_to_user(db, row, user)
 
 
 def binding_read(row: AgentResourceBinding) -> AgentResourceBindingRead:

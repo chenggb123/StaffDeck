@@ -14,5 +14,6 @@ export enum EnterpriseRoute {
   Skills = '/enterprise/skills',
   Tools = '/enterprise/tools',
   Accounts = '/enterprise/accounts',
+  Roles = '/enterprise/roles',
   Models = '/enterprise/models',
 }

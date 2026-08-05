@@ -54,6 +54,28 @@ class UserAvatar(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=utc_now)
 
 
+class Role(SQLModel, table=True):
+    """RBAC 角色:``User.role`` 引用 ``Role.id``。
+
+    内置角色 ``admin``/``member`` 使用固定 id(与存量 users.role 值兼容):
+    admin 隐式拥有全部权限且不可删除/修改;member 为默认角色,权限可配置。
+    自定义角色由管理员创建,permissions_json 存授予的权限点 key 列表。
+    create_all 建表,无需 ALTER。
+    """
+
+    __tablename__ = "roles"
+    __table_args__ = (UniqueConstraint("tenant_id", "display_name", name="uq_role_tenant_display_name"),)
+
+    id: str = Field(default_factory=lambda: new_id("role"), primary_key=True)
+    tenant_id: str = Field(index=True)
+    display_name: str
+    description: Optional[str] = None
+    is_builtin: bool = Field(default=False)
+    permissions_json: list[str] = Field(default_factory=list, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
 class Skill(SQLModel, table=True):
     __tablename__ = "skills"
     __table_args__ = (UniqueConstraint("tenant_id", "skill_id", name="uq_skill_tenant_skill_id"),)

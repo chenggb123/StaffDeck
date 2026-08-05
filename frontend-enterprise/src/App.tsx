@@ -10,10 +10,13 @@ import {
 import { api, isAuthError, TENANT_ID } from "./api/client";
 import {
   clearEnterpriseAuthSession,
+  ENTERPRISE_PERMISSIONS,
   getEnterpriseAuthSession,
+  hasAnyEnterpriseManagementPermission,
   isEnterpriseAdmin,
   isGalleryEmployee,
   setEnterpriseAuthSession,
+  userHasPermission,
   type EnterpriseAuthSession,
   type EnterpriseAuthUser,
 } from "./auth";
@@ -52,6 +55,7 @@ import KnowledgeManagePage, { KnowledgeAddPage } from "./pages/KnowledgePage";
 import LoginPage from "./pages/LoginPage";
 import ModelsPage from "./pages/ModelsPage";
 import OpenPlatformPage from "./pages/OpenPlatformPage";
+import RolesPage from "./pages/RolesPage";
 import SkillsPage from "./pages/SkillsPage";
 import {
   ScheduledTaskEditPage,
@@ -469,7 +473,7 @@ function Shell({
       <AppSidebar
         selected={selected}
         onNavigate={navigate}
-        isAdmin={isAdmin}
+        user={auth.user}
         sidebarAgent={sidebarAgent}
         scopeAgents={scopeAgents}
         selectedAgentId={selectedAgentId}
@@ -480,7 +484,10 @@ function Shell({
         onOpenChat={() => {
           navigate(EnterpriseRoute.Gallery);
         }}
-        modelSetupAttention={isAdmin && showModelSetupNotice}
+        modelSetupAttention={
+          userHasPermission(auth.user, ENTERPRISE_PERMISSIONS.modelConfigs) &&
+          showModelSetupNotice
+        }
       />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <div
@@ -494,7 +501,7 @@ function Shell({
                 </span>
                 <span className="min-w-0 text-[13px] leading-[20px]">{modelSetupNoticeText}</span>
               </div>
-              {isAdmin && (
+              {userHasPermission(auth.user, ENTERPRISE_PERMISSIONS.modelConfigs) && (
                 <UIButton
                   type="button"
                   size="sm"
@@ -685,8 +692,18 @@ function Shell({
               <Route
                 path="/enterprise/accounts"
                 element={
-                  isAdmin ? (
+                  userHasPermission(auth.user, ENTERPRISE_PERMISSIONS.accounts) ? (
                     <AccountsPage currentUser={auth.user} onLogout={onLogout} />
+                  ) : (
+                    <Navigate to={EnterpriseRoute.Gallery} replace />
+                  )
+                }
+              />
+              <Route
+                path="/enterprise/roles"
+                element={
+                  userHasPermission(auth.user, ENTERPRISE_PERMISSIONS.roles) ? (
+                    <RolesPage currentUser={auth.user} onLogout={onLogout} />
                   ) : (
                     <Navigate to={EnterpriseRoute.Gallery} replace />
                   )
@@ -695,7 +712,7 @@ function Shell({
               <Route
                 path="/enterprise/models"
                 element={
-                  isAdmin ? (
+                  userHasPermission(auth.user, ENTERPRISE_PERMISSIONS.modelConfigs) ? (
                     <ModelsPage currentUser={auth.user} onLogout={onLogout} />
                   ) : (
                     <Navigate to={EnterpriseRoute.Gallery} replace />
@@ -947,6 +964,9 @@ function AuthedApp({
       </Routes>
     );
   }
+  if (!hasAnyEnterpriseManagementPermission(auth.user)) {
+    return <Navigate to={EnterpriseRoute.Gallery} replace />;
+  }
   return <Shell auth={auth} onLogout={onLogout} />;
 }
 
@@ -1009,7 +1029,9 @@ export default function App() {
           />
         </Routes>
         {auth && authChecked ? <OnboardingGuide /> : null}
-        {auth && authChecked ? <QuickStartGuide isAdmin={isEnterpriseAdmin(auth.user)} /> : null}
+        {auth && authChecked && hasAnyEnterpriseManagementPermission(auth.user) ? (
+          <QuickStartGuide isAdmin={isEnterpriseAdmin(auth.user)} />
+        ) : null}
       </BrowserRouter>
       <Toaster richColors closeButton position="top-center" />
     </TooltipProvider>

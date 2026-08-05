@@ -7,7 +7,8 @@ from app.db import get_session
 from app.db.models import AgentProfile, ChatSession, MemoryRecord, User
 from app.memory.service import memory_agent_id, memory_matches_agent, memory_read, memory_rows_for_read
 from app.security.auth import get_current_user, require_current_tenant
-from app.security.permissions import agent_owned_by_user, is_admin_user
+from app.security.permissions import PERM_OVERSIGHT, agent_owned_by_user
+from app.security.rbac import user_has_permission
 from app.security.tenant import ensure_tenant
 
 
@@ -98,7 +99,7 @@ def _can_view_all_memories(
     agent_id: str | None,
     current_user: User,
 ) -> bool:
-    if is_admin_user(current_user):
+    if user_has_permission(db, current_user, PERM_OVERSIGHT):
         return True
     if not agent_id:
         return False

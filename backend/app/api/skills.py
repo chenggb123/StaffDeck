@@ -239,7 +239,7 @@ def create_skill(
             metadata_json=creator_metadata,
         )
     else:
-        ensure_open_gallery_admin(request.tenant_id, current_user)
+        ensure_open_gallery_admin(db, request.tenant_id, current_user)
         mark_resource_open_gallery(row, creator_metadata)
         ensure_open_gallery_binding(
             db,
@@ -315,7 +315,7 @@ def update_skill(
         projected = project_skill_with_branch(row, branch, binding.status)
         stats = _skill_stats(db, request.tenant_id)
         return skill_read(projected, stats, _recent_skill_stats(db, request.tenant_id, stats))
-    ensure_open_gallery_admin(request.tenant_id, current_user)
+    ensure_open_gallery_admin(db, request.tenant_id, current_user)
     row.version = normalized_content.version
     row.name = normalized_content.name
     row.business_domain = normalized_content.business_domain
@@ -354,7 +354,7 @@ def publish_skill(
         projected = project_skill_with_branch(row, branch, "active")
         stats = _skill_stats(db, tenant_id)
         return skill_read(projected, stats, _recent_skill_stats(db, tenant_id, stats))
-    ensure_open_gallery_admin(tenant_id, current_user)
+    ensure_open_gallery_admin(db, tenant_id, current_user)
     row.status = "published"
     _sync_skill_tool_bindings(db, tenant_id, row.skill_id, row.content_json)
     mark_resource_open_gallery(row)
@@ -389,7 +389,7 @@ def archive_skill(
         projected = project_skill_with_branch(row, branch, "inactive")
         stats = _skill_stats(db, tenant_id)
         return skill_read(projected, stats, _recent_skill_stats(db, tenant_id, stats))
-    ensure_open_gallery_admin(tenant_id, current_user)
+    ensure_open_gallery_admin(db, tenant_id, current_user)
     row.status = "archived"
     row.updated_at = utc_now()
     db.add(row)
@@ -414,7 +414,7 @@ def draft_skill(
     agent = ensure_agent_scope_manager(db, tenant_id, agent_id, current_user)
     if agent and not agent.is_overall:
         raise HTTPException(status_code=403, detail="Only overall SOPs can be moved to draft")
-    ensure_open_gallery_admin(tenant_id, current_user)
+    ensure_open_gallery_admin(db, tenant_id, current_user)
     row.status = "draft"
     row.updated_at = utc_now()
     db.add(row)
@@ -467,13 +467,13 @@ def delete_skill(
     if agent and agent.is_overall:
         if not is_open_gallery_resource(db, tenant_id, "skill", row):
             raise HTTPException(status_code=404, detail="Skill not visible in open gallery")
-        ensure_open_gallery_admin(tenant_id, current_user)
+        ensure_open_gallery_admin(db, tenant_id, current_user)
         hide_open_gallery_binding(db, tenant_id, "skill", row.id)
         db.commit()
         return {"status": "hidden"}
 
     require_overall_agent(db, tenant_id, agent_id)
-    ensure_open_gallery_admin(tenant_id, current_user)
+    ensure_open_gallery_admin(db, tenant_id, current_user)
     feedback_rows = db.exec(
         select(SkillFeedback).where(
             SkillFeedback.tenant_id == tenant_id,
@@ -567,7 +567,7 @@ def delete_skill_version(
     current_user: User = Depends(get_current_user),
 ) -> dict[str, str]:
     skill = _get_skill(db, tenant_id, skill_id)
-    ensure_open_gallery_admin(tenant_id, current_user)
+    ensure_open_gallery_admin(db, tenant_id, current_user)
     if skill.version == version:
         raise HTTPException(status_code=409, detail="Cannot delete the active skill version")
     row = _get_skill_version(db, tenant_id, skill_id, version)
@@ -593,7 +593,7 @@ def rollback_skill_version(
         projected = project_skill_with_branch(skill, branch)
         stats = _skill_stats(db, tenant_id)
         return skill_read(projected, stats, _recent_skill_stats(db, tenant_id, stats))
-    ensure_open_gallery_admin(tenant_id, current_user)
+    ensure_open_gallery_admin(db, tenant_id, current_user)
     row = _get_skill(db, tenant_id, skill_id)
     version_row = _get_skill_version(db, tenant_id, skill_id, version)
     normalized_content, _warnings = skill_card_with_unique_step_ids(

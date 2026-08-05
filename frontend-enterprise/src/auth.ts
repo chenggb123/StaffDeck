@@ -3,7 +3,9 @@ export type EnterpriseAuthUser = {
   tenant_id: string;
   username: string;
   display_name?: string;
-  role: 'admin' | 'member';
+  role: string;
+  role_display_name?: string;
+  permissions: string[];
   avatar_url?: string;
 };
 
@@ -53,7 +55,45 @@ function readStoredSession(key: string): EnterpriseAuthSession | null {
 }
 
 export function isEnterpriseAdmin(user?: EnterpriseAuthUser | null): boolean {
+  // 全局管理特权:内置管理员角色恒真,或角色配置了全局数字员工管理权限
+  return userHasPermission(user, ENTERPRISE_PERMISSIONS.agentsGlobal);
+}
+
+// 严格身份判断:是否挂在内置管理员角色上(仅用于展示类文案,不做鉴权)
+export function isAdminRole(user?: EnterpriseAuthUser | null): boolean {
   return user?.role === 'admin';
+}
+
+// 权限点常量与后端 PERMISSION_CATALOG 保持一致
+export const ENTERPRISE_PERMISSIONS = {
+  accounts: 'accounts.manage',
+  roles: 'roles.manage',
+  modelConfigs: 'model_configs.manage',
+  channels: 'channels.manage',
+  mcp: 'mcp.manage',
+  systemSettings: 'system_settings.manage',
+  agentsGlobal: 'agents.manage_global',
+  scheduledTasks: 'scheduled_tasks.manage',
+  chatOps: 'chat_ops.manage',
+  oversight: 'oversight.view',
+} as const;
+
+export function userHasPermission(
+  user: EnterpriseAuthUser | null | undefined,
+  permission: string,
+): boolean {
+  if (!user) return false;
+  // 内置管理员恒拥有全部权限(兼容旧会话缓存里没有 permissions 字段的情况)
+  if (user.role === 'admin') return true;
+  return Array.isArray(user.permissions) && user.permissions.includes(permission);
+}
+
+export function hasAnyEnterpriseManagementPermission(
+  user: EnterpriseAuthUser | null | undefined,
+): boolean {
+  return Object.values(ENTERPRISE_PERMISSIONS).some((permission) =>
+    userHasPermission(user, permission),
+  );
 }
 
 export function isGalleryEmployee(agent?: { metadata?: Record<string, unknown> } | null): boolean {

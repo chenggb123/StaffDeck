@@ -7,7 +7,7 @@ from sqlmodel import Session
 from app.db import get_session
 from app.db.models import UIConfig, User, utc_now
 from app.security.auth import get_current_user, require_current_tenant
-from app.security.permissions import ensure_tenant_admin
+from app.security.permissions import PERM_SYSTEM_SETTINGS, ensure_permission
 from app.security.tenant import ensure_tenant
 
 enterprise_router = APIRouter(
@@ -75,7 +75,7 @@ def update_enterprise_ui_config(
     db: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> UIConfigRead:
-    ensure_tenant_admin(request.tenant_id, current_user)
+    ensure_permission(db, request.tenant_id, current_user, PERM_SYSTEM_SETTINGS)
     row = get_or_create_ui_config(db, request.tenant_id)
     row.show_thinking_trace = request.show_thinking_trace
     row.show_skill_trace = request.show_skill_trace
