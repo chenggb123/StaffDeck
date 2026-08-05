@@ -1,41 +1,62 @@
-<div align="center">
+# StaffDeck
 
-<img src="packaging/assets/staffdeck_banner_cn.png" alt="StaffDeck 标志"  />
+StaffDeck 是一套面向企业的数字员工构建与管理平台，将专业经验、业务流程和判断标准沉淀为可复用、可追溯的数字员工。
 
-<p align="center">
-  <a href="https://staffdeck.openbmb.cn/"><img src="https://img.shields.io/badge/Website-staffdeck.openbmb.cn-FF6B35?style=flat-square&logo=googlechrome&logoColor=white" alt="Official Website"/></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-AGPL_3.0-blue.svg?style=flat-square" alt="License"/></a>
-  <a href="https://github.com/OpenBMB/StaffDeck/stargazers"><img src="https://img.shields.io/github/stars/OpenBMB/StaffDeck?style=flat-square" alt="Stars"/></a>
-  <br/>
-  <a href="#-联系我们"><img src="https://img.shields.io/badge/Discord-社群-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"/></a>
-  &nbsp;
-  <a href="#-联系我们"><img src="https://img.shields.io/badge/飞书-交流群-00D6B9?style=for-the-badge&logo=bytedance&logoColor=white" alt="Feishu"/></a>
-  &nbsp;
-  <a href="#-联系我们"><img src="https://img.shields.io/badge/微信-交流群-07C160?style=for-the-badge&logo=wechat&logoColor=white" alt="WeChat"/></a>
-  <br/>
-</p>
+## 核心能力
 
-[English](./README.md) | **简体中文**
+- 构建和管理数字员工，包括员工档案、能力配置、工作记录和访问范围。
+- 通过自然语言生成状态机驱动的 SOP，并支持版本管理和分支演化。
+- 基于结构化知识库检索，并保留来源引用。
+- 通过工具、MCP、HTTP API 和定时任务执行真实业务操作。
+- 接入微信、企业微信、飞书和钉钉渠道。
+- 使用角色权限控制管理端访问。
 
+## 技术栈
 
-</div>
+- 后端：Python 3.11+、FastAPI、SQLModel、SQLite
+- 前端：React 18、TypeScript、Vite、Tailwind CSS
+- 运行时：单端口 FastAPI 应用，支持桌面端和本地部署
 
+## 快速开始
 
-## 更新日志
+环境要求：
 
-  - **2026-07-15**：StaffDeck正式开源！欢迎大家使用反馈与Star支持。
+- Python 3.11+
+- Node.js 20+
+- OpenAI Chat Completions 兼容的模型接口和 API Key
 
-# 💡 关于StaffDeck
+macOS、Linux 或 WSL：
 
-StaffDeck是一套面向企业的数字员工构建与管理平台，帮助专业员工将工作经验、业务流程和判断标准固化为可以持续工作的数字员工，接手重复性任务，并将个人能力沉淀为可复用、可迭代、可追溯的组织资产。StaffDeck由[面壁智能](https://modelbest.cn/)，[东北大学-面壁智能数据智能联合实验室](https://neuir.github.io/)，[清华大学THUNLP实验室](https://nlp.csai.tsinghua.edu.cn/)，[OpenBMB](https://www.openbmb.cn/home)与[AI9Stars](https://github.com/AI9Stars)联合研发，面向希望将 AI 从个人效率工具升级为组织生产力的企业与机构。
+```bash
+python3 -m venv backend/.venv
+backend/.venv/bin/python -m pip install -e "backend[dev]"
+npm --prefix frontend-enterprise ci
+cp backend/.env.example backend/.env
+scripts/dev_up.sh --detach
+```
 
-## 核心亮点
+Windows PowerShell：
 
-- 🧑‍💼 **数字员工构建与管理**：将专业员工的经验、流程和判断标准固化为拥有岗位、工号、能力档案和工作记录的数字员工；支持能力成长、权限隔离及发布复用。
-- 🧩 **状态机驱动的流程型技能**：通过自然语言生成结构化 SOP，以状态机保证复杂流程准确执行；支持多个流程实时切换、上下文保留、可视化编辑、版本管理和分支演化。
-- 📚 **文档结构感知的知识检索**：基于文档、章节、页面和摘要等层级构建可导航索引，让数字员工先判断信息可能位于哪里，再逐层定位原文；支持知识分桶、定向检索、来源引用和检索调试。
-- 🔌 **自主执行与持续迭代**：通过 HTTP API、MCP 和定时任务执行真实业务操作，并结合长期记忆、完整 Trace、真人接管、用户反馈和反馈分析形成持续迭代闭环。
-- 🔐 **角色权限管理**：通过内置 `admin`/`member` 角色、可配置权限点和自定义角色控制管理端访问权限。
+```powershell
+py -3 -m venv backend\.venv
+.\backend\.venv\Scripts\python.exe -m pip install -e "backend[dev]"
+npm --prefix frontend-enterprise ci
+Copy-Item backend\.env.example backend\.env
+.\scripts\dev_up.ps1 --detach
+```
+
+配置 `backend/.env`：
+
+```dotenv
+APP_SECRET="请替换为足够长的随机字符串"
+DEMO_MODEL_BASE_URL="https://你的OpenAI兼容接口/v1"
+DEMO_MODEL_NAME="你的模型名"
+DEMO_MODEL_API_KEY="你的API-Key"
+```
+
+默认管理员账号为 `admin` / `admin`，请在首次登录后修改密码。
+
+打开 [http://127.0.0.1:5173/workspace/gallery](http://127.0.0.1:5173/workspace/gallery) 开始对话。
 
 ## 角色权限管理
 
@@ -43,16 +64,9 @@ StaffDeck 使用基于角色的权限模型控制管理端功能：
 
 - `admin`：内置管理员角色，默认拥有全部权限，不可编辑或删除。
 - `member`：默认成员角色，权限可由管理员配置。
-- 自定义角色：管理员可以创建自定义角色，自由组合权限点，并在账号管理中分配给用户。
+- 自定义角色：管理员可以创建自定义角色，并分配给账号。
 
-管理权限点包括账号管理、角色权限管理、模型配置、渠道接入、MCP 与工具管理、系统设置、全局数字员工管理、企业定时任务、会话管理操作和监督审计。没有任何管理权限的用户只能进入员工广场和聊天工作区，管理端入口会按权限隐藏。
-
-**快速使用**
-
-1. 使用内置管理员账号登录，进入**角色权限**页面（`/enterprise/roles`）。
-2. 编辑默认 `member` 角色权限，或创建自定义角色并勾选所需权限点。
-3. 进入**账号管理**，为账号分配角色。
-4. 角色和权限变更会在下一次请求时生效；已登录用户刷新页面即可获得最新权限。
+没有任何管理权限的用户只能进入员工广场和聊天工作区，管理端入口会按权限隐藏。
 
 | 权限点 | 管理功能 |
 | --- | --- |
@@ -67,338 +81,32 @@ StaffDeck 使用基于角色的权限模型控制管理端功能：
 | `chat_ops.manage` | 会话管理操作 |
 | `oversight.view` | 监督审计 |
 
-## 客户端下载
-
-访问 [StaffDeck 官方网站](https://staffdeck.openbmb.cn/)，或直接下载最新桌面客户端：
-
-| 平台 | 架构 | 下载 |
-| --- | --- | --- |
-| macOS | Apple Silicon（arm64） | [下载 `.dmg`](https://github.com/OpenBMB/StaffDeck/releases/latest/download/StaffDeck-macos-arm64.dmg) |
-| macOS | Intel（x86_64） | [下载 `.dmg`](https://github.com/OpenBMB/StaffDeck/releases/latest/download/StaffDeck-macos-x86_64.dmg) |
-| Windows | x64 | [下载安装程序 `.exe`](https://github.com/OpenBMB/StaffDeck/releases/latest/download/StaffDeck-windows-x64-setup.exe) |
-| Linux | x86_64（Debian/Ubuntu） | [下载 `.deb`](https://github.com/OpenBMB/StaffDeck/releases/latest/download/StaffDeck-linux-x86_64.deb) |
-
-Linux 安装包默认只监听本机 `127.0.0.1`。安装后可以在终端配置监听模式和
-端口，无头服务器也适用：
-
-```bash
-staffdeck setup
-staffdeck setup --mode local --port 5173
-staffdeck setup --mode lan --port 5173
-staffdeck setup --mode public --port 5173 --public-url https://staff.example.com
-```
-
-`local` 只允许本机访问；`lan` 和 `public` 监听 `0.0.0.0`。`--port` 用来
-设置监听端口。交互式终端下，`public` 会先尝试自动推断公网 URL；如果无法
-推断，或者是在无头环境中运行，就需要显式传入 `--public-url`。公网部署建议
-使用 HTTPS 反向代理；启用 OIDC 时，`OIDC_REDIRECT_URI` 应配置为同一个公网
-URL。配置按用户保存，并在下次启动时生效。
-
-## Agent 一键部署
-
-将下面的 Prompt 粘贴给 Cursor、Claude Code 或 Codex。代码部署时，也可以用
-`ULTRARAG_HOST`、`ULTRARAG_PORT` 和 `STAFFDECK_PUBLIC_URL` 覆盖启动参数：
-
-```text
-阅读 https://raw.githubusercontent.com/OpenBMB/StaffDeck/main/README.zh.md。
-克隆 OpenBMB/StaffDeck 私有仓库，准备 Python 3.11 或更高版本和 Node.js 20，创建
-backend/.venv，安装前后端依赖，将 backend/.env.example 复制为
-backend/.env；缺少 OpenAI 兼容模型地址或 API Key 时向我询问，并严格使用当前
-系统对应的文档命令。macOS/Linux/WSL 运行 scripts/dev_up.sh --detach，Windows
-PowerShell 运行 .\scripts\dev_up.ps1 --detach；验证 /api/health 和
-/workspace/gallery 后再报告完成。
-```
-
-
-## 目录
-
-- [💡 关于StaffDeck](#-关于staffdeck)
-  - [核心亮点](#核心亮点)
-  - [角色权限管理](#角色权限管理)
-  - [客户端下载](#客户端下载)
-  - [Agent 一键部署](#agent-一键部署)
-  - [目录](#目录)
-  - [快速开始](#快速开始)
-    - [环境要求](#环境要求)
-    - [1. 克隆并安装](#1-克隆并安装)
-    - [2. 配置模型](#2-配置模型)
-    - [3. 启动 Web Demo](#3-启动-web-demo)
-    - [4. 验证安装](#4-验证安装)
-    - [常用命令](#常用命令)
-      - [统一 Python 入口](#统一-python-入口)
-  - [核心流程](#核心流程)
-  - [项目结构](#项目结构)
-  - [常见问题](#常见问题)
-  - [路线图](#路线图)
-- [💬 联系我们](#-联系我们)
-  - [参与贡献](#参与贡献)
-  - [风险与限制](#风险与限制)
-  - [引用](#引用)
-  - [许可证](#许可证)
-  - [致谢](#致谢)
-
-## 快速开始
-
-### 环境要求
-
-- 支持 macOS、Linux、WSL 或 Windows PowerShell
-- Python **3.11+**
-- Node.js **20+** 与 npm
-- OpenAI Chat Completions 兼容的模型接口和 API Key
-- 应用本身不要求 CUDA；硬件要求由所选择的模型服务决定
-
-### 1. 克隆并安装
-
-首先克隆仓库：
-
-```bash
-git clone https://github.com/OpenBMB/StaffDeck.git
-cd StaffDeck
-```
-
-macOS、Linux 或 WSL：
-
-```bash
-python3 -m venv backend/.venv
-backend/.venv/bin/python -m pip install -e "backend[dev]"
-npm --prefix frontend-enterprise ci
-cp backend/.env.example backend/.env
-```
-
-Windows PowerShell：
-
-```powershell
-py -3 -m venv backend\.venv
-.\backend\.venv\Scripts\python.exe -m pip install -e "backend[dev]"
-npm --prefix frontend-enterprise ci
-Copy-Item backend\.env.example backend\.env
-```
-
-### 2. 配置模型
-
-首次启动前编辑 `backend/.env`：
-
-```dotenv
-APP_SECRET="请替换为足够长的随机字符串"
-DEMO_MODEL_BASE_URL="https://你的OpenAI兼容接口/v1"
-DEMO_MODEL_NAME="你的模型名"
-DEMO_MODEL_API_KEY="你的API-Key"
-```
-
-API Key 用于创建初始模型配置，存入数据库前会被加密。请勿提交 `backend/.env`。服务启动后也可以在**管理员 → 模型配置**中管理模型服务。
-
-### 3. 启动 Web Demo
-
-| 平台 | 推荐命令 |
-| --- | --- |
-| macOS、Linux 或 WSL | `scripts/dev_up.sh --detach` |
-| Windows PowerShell | `.\scripts\dev_up.ps1 --detach` |
-
-两套包装脚本最终都会调用同一个跨平台 Python 生命周期入口 `scripts/dev.py`。启动过程会构建 StaffDeck 前端，并由一个 FastAPI 进程在 `5173` 端口同时提供 UI、API 与 Swagger 文档。默认管理员账号为 `admin` / `admin`，请在首次登录后通过账号配置修改密码。
-
-### 4. 验证安装
-
-macOS、Linux 或 WSL：
-
-```bash
-curl http://127.0.0.1:5173/api/health
-```
-
-Windows PowerShell：
-
-```powershell
-curl.exe http://127.0.0.1:5173/api/health
-```
-
-预期输出：
-
-```json
-{"status":"ok"}
-```
-
-打开 [http://127.0.0.1:5173/workspace/gallery](http://127.0.0.1:5173/workspace/gallery)，选择一个数字员工并发送首条消息。回答和执行记录应该在同一个对话轮次中流式显示。
-
-### 常用命令
-
-| 操作 | macOS、Linux 或 WSL | Windows PowerShell |
-| --- | --- | --- |
-| 后台启动 | `scripts/dev_up.sh --detach` | `.\scripts\dev_up.ps1 --detach` |
-| 前台启动 | `scripts/dev_up.sh` | `.\scripts\dev_up.ps1` |
-| 查看服务状态 | `scripts/dev_status.sh` | `.\scripts\dev_status.ps1` |
-| 停止本地服务 | `scripts/dev_down.sh` | `.\scripts\dev_down.ps1` |
-
-#### 统一 Python 入口
-
-上述包装脚本最终都会调用 `scripts/dev.py`。也可以直接使用第 1 步创建的项目虚拟环境，避免依赖 Shell 脚本执行能力或系统 Python Launcher：
-
-| 平台 | 直接后台启动 |
-| --- | --- |
-| macOS、Linux 或 WSL | `backend/.venv/bin/python scripts/dev.py up --detach` |
-| Windows PowerShell | `.\backend\.venv\Scripts\python.exe scripts\dev.py up --detach` |
-
-需要执行其他操作时，将 `up --detach` 替换为对应的生命周期参数：
-
-| 操作 | 参数 |
-| --- | --- |
-| 后台启动 | `up --detach` |
-| 前台启动 | `up` |
-| 查看服务状态 | `status` |
-| 停止本地服务 | `down` |
-
-> 完整说明 → [StaffDeck 使用教程](https://staffdeck.openbmb.cn/#/docs/introduce?lang=zh)
-
-
-
-
-## 核心流程
-
-1. **创建数字员工**：设置职位、岗位边界、服务风格、创建者与访问范围。
-2. **配置员工能力**：从广场复制或自行创建知识库、通用技能、SOP 与工具，不修改广场原件。
-3. **发起会话**：从数字员工广场或员工列表进入；发送首条消息后持久化正式 Session。
-4. **执行并观测**：在执行记录中查看流式意图、检索、技能、工具、校验和回答事件。
-5. **必要时介入**：继续排队请求、取消运行、转人工或处理待回答内容。
-6. **持续运营**：利用记忆、反馈、对话日志和定时任务长期优化员工能力。
-
-## 渠道接入（微信 / 企业微信）
-
-数字员工可以通过 IM 渠道直接对外服务：用户在微信或企业微信里与数字员工对话，渠道侧的多员工调度、意图自动分发、身份合并与对话观测全部由平台内置完成。渠道内核为渠道无关设计（适配器注册表），后续接入新渠道只需新增适配器。
-
-**支持能力**
-
-- 一个渠道账号挂载多个数字员工；`/员工`、`/切换 <名字>`、`/当前`、`/帮助` 指令调度；
-- 意图自动分发：按用户消息意图（LLM 分类）自动路由到最合适的员工，SOP 进行中提高切换阈值，人工接管与手动切换保护窗内保持粘性；
-- 身份合并：微信/企微用户可通过 `/绑定 <一次性码>` 把渠道身份合并到既有 StaffDeck 账号，记忆与会话统一，`/解绑` 可逆；
-- 对话记录与投递日志按天归纳分页；管理员与员工创建者可按权限查看全部渠道会话；
-- 可靠性：入站幂等去重、崩溃恢复、出站退避重试、token 失效自动告警与微信会话自愈。
-
-**微信（个人，iLink 协议）**
-
-1. 侧边栏进入「渠道接入」→「接入渠道」→ 选择「微信」并选择默认员工；
-2. 详情页点击「扫码接入」，用手机微信扫描并确认（二维码约 2 分钟内有效，过期自动刷新）；
-3. 微信用户对绑定后的微信号发消息即可对话（私聊或拉群）。
-
-**企业微信（智能机器人 WS 长连接）**
-
-1. 企业微信管理后台 → 应用管理 → 智能机器人，创建机器人并获取「机器人 ID」与「Secret」;
-2. 「渠道接入」→「接入渠道」→ 选择「企业微信」,选择默认员工后创建；
-3. 详情页填入机器人 ID 与 Secret 保存（可选填「企业 ID」，用于跨企业区分相同 userid，建议填写）;
-4. 凭证保存后自动建立长连接，状态变为「已连接」即可收发消息。
-
-**生产部署清单**
-
-- 必须将 `APP_SECRET` 改为强随机值（渠道凭证加密密钥由它派生；更推荐同时配置独立的 `CHANNEL_SECRET`);
-- 渠道凭证（bot token / secret)Fernet 加密落库，任何接口不回传明文；
-- 绑定管理权限：管理员或绑定创建者；员工挂载动作本身即"对该渠道全部用户开放该员工",请按需授权。
-
 ## 项目结构
 
 ```text
-StaffDeck/
-├── backend/                  # FastAPI 接口、Agent 运行时、存储与任务 Worker
-├── frontend-enterprise/      # React/TypeScript StaffDeck 工作台
-├── docs/                     # 教程、API、Schema 与示例流程
-├── scripts/                  # 单端口服务生命周期与校验脚本
-├── packaging/                # macOS、Linux 与 Windows 打包资源
-├── README.md                 # English
-└── README.zh.md              # 简体中文
+backend/                    FastAPI API、Agent 运行时、存储和任务 worker
+frontend-enterprise/        React/TypeScript 工作台
+contracts/agent/v1/         Agent 协议 fixtures 和 schema
+scripts/                    生命周期和校验脚本
+packaging/                  平台打包资源
 ```
 
+## 开发命令
 
-## 常见问题
+```bash
+# 后端测试
+backend/.venv/bin/python -m pytest backend/tests
 
-<details>
-<summary><strong>页面可以打开，但数字员工不回答。</strong></summary>
+# Python 代码检查
+backend/.venv/bin/python -m ruff check backend
 
-检查所选模型配置、API Key、模型名和模型服务网络。随后查看执行记录与 `.dev/logs/app.log`，定位模型服务返回的具体错误。
-</details>
+# 前端测试
+npm --prefix frontend-enterprise test
 
-<details>
-<summary><strong>没有本地 GPU 可以运行吗？</strong></summary>
-
-可以。应用调用 OpenAI 兼容模型接口，GPU 要求由你自行部署或使用的模型服务决定。
-</details>
-
-<details>
-<summary><strong>为什么普通用户可以使用广场资源，但不能编辑？</strong></summary>
-
-广场资源是可复用模板。普通用户可将有权限的资源复制或绑定到自己的员工，原始资源仍由创建者与管理员权限保护。
-</details>
-
-## 路线图
-
-- [ ] 群聊，多数字员工沟通/分工
-- [x] 更多企业连接器与经过审核的广场资源（已支持微信、企业微信渠道接入）
-- [ ] 面向高风险工具动作的细粒度审批策略
-
-路线优先级由真实部署需求驱动。请通过 [Issue](https://github.com/OpenBMB/StaffDeck/issues) 提供可复现的场景和预期行为。
-
-# 💬 联系我们
-- 关于技术问题及功能请求，请提交 [GitHub Issues](https://github.com/OpenBMB/StaffDeck/issues)。
-- 商业合作，请联系：
-  ```
-  business@modelbest.cn
-  ```
-- 欢迎加入我们的社区与我们交流：
-
-<table width="100%">
-<tr>
-<td width="33%" align="center"><b>微信交流群</b></td>
-<td width="33%" align="center"><b>飞书交流群</b></td>
-<td width="33%" align="center"><b>Discord 社区</b></td>
-</tr>
-<tr>
-<td align="center"><img src="packaging/assets/qr-wechat.png" width="200" alt="微信二维码"/></td>
-<td align="center"><img src="packaging/assets/qr-feishu.jpg" width="200" alt="飞书二维码"/></td>
-<td align="center"><img src="packaging/assets/qr-discord.png" width="200" alt="Discord 二维码"/></td>
-</tr>
-</table>
-
-## 参与贡献
-
-欢迎获得仓库权限的协作者参与：
-
-- 提交可复现的 Bug 与权限问题
-- 提议数字员工、知识、技能、SOP 或工具流程
-- 提交范围清晰、包含测试与浏览器校验的 PR
-- 改进文档和中英翻译
-
-请保留工作区中与任务无关的修改，根据影响范围补充测试，并在 PR 中写明完成 UI 校验的路由与用户角色。
-
-## 风险与限制
-
-- 模型回答可能不正确、不完整或不一致；执行记录可以提高可审计性，但不能保证结论正确。
-- 知识检索效果受原始文档质量、解析、索引、权限与模型能力共同影响。
-- 外部工具与生成的 Runner 可能产生真实副作用。应使用最小权限凭据，并为高风险动作配置人工审批。
-- 定时任务依赖持续运行的 Worker 与正确的用户时区设置。
-- 本项目不能替代法律、医疗、金融、安全及其他受监管领域的专业审核。
-- 未获得适当授权、隐私保护与人工监督时，不得使用本平台处理数据或自动作出重要决定。
-
-## 引用
-
-在内部研究或经授权的公开材料中使用 StaffDeck 时，可引用：
-
-```bibtex
-@software{StaffDeck2026,
-  title  = {StaffDeck: Build, Run, and Govern Enterprise Digital Employees},
-  author = {OpenBMB},
-  year   = {2026},
-  url    = {https://github.com/OpenBMB/StaffDeck}
-}
+# 前端类型检查和生产构建
+npm --prefix frontend-enterprise run build
 ```
-## Star 历史
 
-<a href="https://www.star-history.com/?repos=openbmb%2Fstaffdeck&type=date&legend=top-left">
- <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=openbmb/staffdeck&type=date&theme=dark&legend=top-left&sealed_token=lLohLC57bGAPh4lrzSYu2xW6Fmkavbj5r-T25GGt-jA10veIrv9OBPs0wiE5A98VIxP0NyxjbloW1t5OnPdVn6RT_L6Dmsp5EnfiWsGirs6G3Bv5_l_zUw" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=openbmb/staffdeck&type=date&legend=top-left&sealed_token=lLohLC57bGAPh4lrzSYu2xW6Fmkavbj5r-T25GGt-jA10veIrv9OBPs0wiE5A98VIxP0NyxjbloW1t5OnPdVn6RT_L6Dmsp5EnfiWsGirs6G3Bv5_l_zUw" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=openbmb/staffdeck&type=date&legend=top-left&sealed_token=lLohLC57bGAPh4lrzSYu2xW6Fmkavbj5r-T25GGt-jA10veIrv9OBPs0wiE5A98VIxP0NyxjbloW1t5OnPdVn6RT_L6Dmsp5EnfiWsGirs6G3Bv5_l_zUw" />
- </picture>
-</a>
+## License
 
-## 许可证
-
-本项目基于 GNU Affero General Public License v3.0 开源。
-
-## 致谢
-
-StaffDeck 由 [OpenBMB](https://www.openbmb.cn/) 生态孵化。
+AGPL-3.0
