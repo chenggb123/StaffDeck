@@ -8,7 +8,7 @@ import time
 from datetime import timedelta
 from typing import Any
 
-from sqlalchemy import text, update
+from sqlalchemy import update
 from sqlalchemy.pool import NullPool
 from sqlmodel import Session, create_engine, select
 
@@ -410,15 +410,13 @@ class WeComStreamManager:
                 if result.rowcount == 1:
                     if connected:
                         # 断开告警标记在重连成功时清除(允许下次再告警)
-                        db.execute(
-                            text(
-                                "UPDATE channel_bindings "
-                                "SET config_json = json_remove(config_json, '$.disconnect_alerted_at'), "
-                                "updated_at = :updated_at "
-                                "WHERE id = :binding_id"
-                            ),
-                            {"binding_id": binding_id, "updated_at": utc_now()},
-                        )
+                        row = db.get(ChannelBinding, binding_id)
+                        if row is not None:
+                            config = dict(row.config_json or {})
+                            config.pop("disconnect_alerted_at", None)
+                            row.config_json = config
+                            row.updated_at = utc_now()
+                            db.add(row)
                     db.commit()
                 else:
                     db.rollback()
