@@ -1407,6 +1407,69 @@ def test_harness_agent_enforces_tool_allowlist_and_keeps_an_isolated_transcript(
     assert "不得跳过 read 直接 execute" in system_prompts[0]
 
 
+def test_harness_task_agent_stops_repeated_tool_loop(monkeypatch) -> None:
+    actions = iter(
+        [
+            {
+                "action": "tool",
+                "tool_name": "knowledge_search",
+                "arguments": {"query": "问题"},
+            }
+            for _ in range(6)
+        ]
+    )
+
+    class FakeLLMClient:
+        def __init__(self, _model_config: ModelConfig):
+            pass
+
+        def generate_json(
+            self, _system_prompt: str, _payload: dict[str, object]
+        ) -> dict[str, object]:
+            return next(actions)
+
+    monkeypatch.setattr(harness_agent_module, "LLMClient", FakeLLMClient)
+    invoked: list[tuple[str, dict[str, object]]] = []
+    trace_events: list[tuple[str, dict[str, object]]] = []
+
+    def invoke_tool(name: str, arguments: dict[str, object]) -> dict[str, object]:
+        invoked.append((name, arguments))
+        return {"success": True, "data": {"ok": True}}
+
+    result = HarnessTaskAgent().run(
+        TaskRequirement(
+            task_frame_id="task-loop",
+            kind="conversation",
+            goal="测试重复工具保护",
+            requirements=["反复检索同一能力"],
+            memory_projection=[],
+            capability_manifest=CapabilityManifest(
+                available=[
+                    CapabilityDescriptor(
+                        capability_id="knowledge_search",
+                        name="knowledge_search",
+                        kind="tool",
+                    )
+                ]
+            ),
+        ),
+        _model_config(),
+        invoke_tool,
+        max_actions=10,
+        trace_sink=lambda event_type, payload: trace_events.append(
+            (event_type, payload)
+        ),
+    )
+
+    assert result.status == "completed"
+    assert result.action_count == 4
+    assert len(invoked) == 4
+    assert "多次检索" in result.reply_fragment
+    assert any(
+        event_type == "harness_tool_loop_guard" for event_type, _ in trace_events
+    )
+
+
 def test_harness_agent_activates_described_capability_for_current_revision(
     monkeypatch,
 ) -> None:

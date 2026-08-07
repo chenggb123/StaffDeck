@@ -25,6 +25,7 @@ from app.session.slot_policy import strip_router_generated_message_slots
 PROMPT_PATH = (
     paths.resource_dir() / "app" / "llm" / "prompts" / "harness_agent_prompt.md"
 )
+MAX_REPEATED_TOOL_CALLS = 4
 ToolInvoker = Callable[[str, dict[str, Any]], dict[str, Any]]
 TraceSink = Callable[[str, dict[str, Any]], None]
 CancellationCheck = Callable[[], bool]
@@ -153,6 +154,41 @@ class HarnessTaskAgent:
                     }
                 )
                 continue
+
+            repeated_tool_calls = sum(
+                1
+                for item in transcript
+                if item.get("role") == "tool"
+                and item.get("tool_name") == tool_name
+            )
+            if repeated_tool_calls >= MAX_REPEATED_TOOL_CALLS:
+                if trace_sink:
+                    trace_sink(
+                        "harness_tool_loop_guard",
+                        {
+                            "iteration": iteration,
+                            "tool_name": tool_name,
+                            "repeated_calls": repeated_tool_calls,
+                        },
+                    )
+                loop_action = HarnessAction(
+                    action="finish",
+                    status="completed",
+                    reply_fragment=(
+                        "当前问题已多次检索相同能力仍未得到确定答案，"
+                        "请补充更具体的信息，或转人工处理。"
+                    ),
+                    task_summary="检测到同一工具重复调用，自动结束本轮",
+                )
+                return _finish_result(
+                    requirement,
+                    loop_action,
+                    citations,
+                    evidence_results,
+                    capability_results,
+                    artifacts,
+                    action_count=max(1, iteration - 1),
+                )
 
             try:
                 _raise_if_cancelled(is_cancelled)
