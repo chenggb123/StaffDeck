@@ -1887,6 +1887,13 @@ export function useChatSession(options: UseChatSessionOptions = {}) {
         ensureStreamingTraceMessage(eventSessionId, traceTurnId);
       }
     };
+    const autoCollapseTrace = (currentTurnId: string) => {
+      if (!currentTurnId) return;
+      setCollapsedTraceIds((current) => (
+        current.includes(currentTurnId) ? current : [...current, currentTurnId]
+      ));
+      setExpandedTraceIds((current) => current.filter((item) => item !== currentTurnId));
+    };
     if (item.event === 'session_created') return;
     if (item.event === 'heartbeat') return;
     if (item.event === 'session_title_summarized') {
@@ -1929,6 +1936,9 @@ export function useChatSession(options: UseChatSessionOptions = {}) {
     ) {
       const line = harnessEventTraceLine(item.event, item.data);
       if (line) upsertVisibleTraceLine(line);
+      if (item.event === 'harness_tool_completed') {
+        autoCollapseTrace(traceTurnId);
+      }
       return;
     }
     if (item.event === 'skill_state') {
@@ -2031,6 +2041,7 @@ export function useChatSession(options: UseChatSessionOptions = {}) {
           icon: 'tool',
         });
       }
+      autoCollapseTrace(traceTurnId);
       return;
     }
     if (item.event === 'agent_loop_continued' || item.event === 'agent_loop_completed') {
