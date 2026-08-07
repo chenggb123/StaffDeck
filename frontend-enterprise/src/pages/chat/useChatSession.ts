@@ -1889,10 +1889,19 @@ export function useChatSession(options: UseChatSessionOptions = {}) {
     };
     const autoCollapseTrace = (currentTurnId: string) => {
       if (!currentTurnId) return;
-      setCollapsedTraceIds((current) => (
-        current.includes(currentTurnId) ? current : [...current, currentTurnId]
-      ));
-      setExpandedTraceIds((current) => current.filter((item) => item !== currentTurnId));
+      const slot = getSlot(eventSessionId);
+      const aliasMap = buildTurnAliasMap([
+        ...slot.serverMessages,
+        ...slot.realtimeMessages,
+      ]);
+      const canonicalTurnId = canonicalTurnIdForValue(currentTurnId, aliasMap) || currentTurnId;
+      const ids = Array.from(new Set([currentTurnId, canonicalTurnId]));
+      for (const id of ids) {
+        setCollapsedTraceIds((current) => (
+          current.includes(id) ? current : [...current, id]
+        ));
+        setExpandedTraceIds((current) => current.filter((item) => item !== id));
+      }
     };
     if (item.event === 'session_created') return;
     if (item.event === 'heartbeat') return;
