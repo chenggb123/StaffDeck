@@ -852,11 +852,11 @@ def _safe_document_bucket_rows(
                     knowledge_base_id,
                     knowledge_base_version_id,
                     document_id,
-                    CAST(bucket_key AS BLOB) AS bucket_key,
-                    CAST(title AS BLOB) AS title,
-                    CAST(summary AS BLOB) AS summary,
+                    bucket_key,
+                    title,
+                    summary,
                     token_estimate,
-                    CAST(metadata_json AS BLOB) AS metadata_json,
+                    metadata_json,
                     created_at,
                     updated_at
                 FROM knowledge_buckets
@@ -884,10 +884,10 @@ def _safe_bucket_chunk_rows(db: Session, tenant_id: str, bucket_id: str) -> list
                     document_id,
                     bucket_id,
                     chunk_index,
-                    CAST(content AS BLOB) AS content,
-                    CAST(summary AS BLOB) AS summary,
-                    CAST(source_ref AS BLOB) AS source_ref,
-                    CAST(metadata_json AS BLOB) AS metadata_json,
+                    content,
+                    summary,
+                    source_ref,
+                    metadata_json,
                     created_at,
                     updated_at
                 FROM knowledge_chunks
