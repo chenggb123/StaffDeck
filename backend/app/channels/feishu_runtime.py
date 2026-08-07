@@ -124,12 +124,21 @@ def _build_event_dispatcher(handler_class, receive):
 def run_feishu_runtime(spec, control, watchdog) -> None:
     if importlib.metadata.version("lark-channel-sdk") != SDK_CONTRACT_VERSION:
         raise RuntimeError(f"lark-channel-sdk must be exactly {SDK_CONTRACT_VERSION}")
-    database_path = Path(spec.database_path).expanduser().resolve()
-    stage_engine = create_engine(
-        f"sqlite:///{database_path}",
-        connect_args={"check_same_thread": False, "timeout": 0.5},
-        poolclass=NullPool,
-    )
+    database_url = str(spec.database_url or "").strip()
+    if database_url:
+        stage_engine = create_engine(
+            database_url,
+            connect_args={"connect_timeout": 10},
+            poolclass=NullPool,
+            pool_pre_ping=True,
+        )
+    else:
+        database_path = Path(spec.database_path).expanduser().resolve()
+        stage_engine = create_engine(
+            f"sqlite:///{database_path}",
+            connect_args={"check_same_thread": False, "timeout": 0.5},
+            poolclass=NullPool,
+        )
     with Session(stage_engine) as db:
         binding = db.get(ChannelBinding, spec.binding_id)
         if (

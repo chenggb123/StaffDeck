@@ -7,6 +7,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     app_name: str = "Skill Agent Loop Service"
     database_url: str = "sqlite:///./skill_agent_loop.db"
+    database_pool_size: int = 10
+    database_max_overflow: int = 30
+    database_pool_timeout: int = 30
+    database_connect_timeout_seconds: int = 10
     app_secret: str = "change-me-in-development"
     demo_model_base_url: str = "http://localhost:52010/v1"
     demo_model_name: str = "qwen3.6-27b"

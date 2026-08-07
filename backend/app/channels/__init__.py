@@ -6,7 +6,9 @@ import threading
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from typing import IO
+from typing import IO, Any
+
+from sqlalchemy import text
 
 from app.config import get_settings
 
@@ -21,12 +23,15 @@ _binding_lifecycle_locks: dict[str, threading.RLock] = {}
 _binding_lifecycle_locks_guard = threading.Lock()
 _connector_lock_file: IO[bytes] | None = None
 _connector_lock_pid: int | None = None
+_connector_lock_conn: Any | None = None
 _intake_sweep_thread: threading.Thread | None = None
 
 
 def _acquire_connector_process_lock() -> bool:
-    global _connector_lock_file, _connector_lock_pid
+    global _connector_lock_conn, _connector_lock_file, _connector_lock_pid
     current_pid = os.getpid()
+    if _connector_lock_conn is not None:
+        return True
     if _connector_lock_file is not None and _connector_lock_pid == current_pid:
         return True
     if _connector_lock_file is not None:
@@ -35,6 +40,21 @@ def _acquire_connector_process_lock() -> bool:
         _connector_lock_file = None
         _connector_lock_pid = None
     from app.db import engine
+
+    if engine.url.get_backend_name() == "postgresql":
+        conn = engine.connect()
+        try:
+            acquired = conn.execute(
+                text("SELECT pg_try_advisory_lock(hashtext('staffdeck-connector'))")
+            ).scalar()
+        except Exception:
+            conn.close()
+            raise
+        if not acquired:
+            conn.close()
+            return False
+        _connector_lock_conn = conn
+        return True
 
     database_path = engine.url.database
     if engine.url.get_backend_name() != "sqlite" or not database_path or database_path == ":memory:":
@@ -65,7 +85,16 @@ def _acquire_connector_process_lock() -> bool:
 
 
 def _release_connector_process_lock() -> None:
-    global _connector_lock_file, _connector_lock_pid
+    global _connector_lock_conn, _connector_lock_file, _connector_lock_pid
+    conn = _connector_lock_conn
+    if conn is not None:
+        try:
+            conn.execute(
+                text("SELECT pg_advisory_unlock(hashtext('staffdeck-connector'))")
+            )
+        finally:
+            conn.close()
+            _connector_lock_conn = None
     handle = _connector_lock_file
     if handle is None:
         return
@@ -133,8 +162,8 @@ def channel_services_enabled() -> bool:
 
 def _ensure_adapters_registered() -> None:
     # 各适配器模块导入即自注册(模块级 register_channel_adapter)
-    import app.channels.adapters.feishu  # noqa: F401
     import app.channels.adapters.dingtalk  # noqa: F401
+    import app.channels.adapters.feishu  # noqa: F401
     import app.channels.adapters.wechat  # noqa: F401
     import app.channels.adapters.wecom  # noqa: F401
 
@@ -230,7 +259,10 @@ def start_channel_services() -> None:
         logger.info("staffdeck_role=%s,渠道服务不启动", get_settings().staffdeck_role)
         return
     if not _acquire_connector_process_lock():
-        raise RuntimeError("检测到另一 connector 进程正在运行；每个数据库仅允许一个 connector")
+        if get_settings().staffdeck_role == "connector":
+            raise RuntimeError("检测到另一 connector 进程正在运行；每个数据库仅允许一个 connector")
+        logger.warning("connector 锁已被其他进程持有，本进程跳过渠道服务")
+        return
     try:
         _ensure_adapters_registered()
         from app.channels.service_intake import (

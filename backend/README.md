@@ -22,8 +22,15 @@ cp .env.example .env
 
 Swagger UI: `http://localhost:5173/docs`
 
-The current production schema migration path supports SQLite only. Non-SQLite
-database URLs are not a supported deployment configuration.
+SQLite remains the default for desktop and single-user deployments. PostgreSQL is
+also supported for team deployments; set `DATABASE_URL` to a
+`postgresql+psycopg://` URL and startup auto-creates the current schema.
+Connection pool size can be tuned with `DATABASE_POOL_SIZE`,
+`DATABASE_MAX_OVERFLOW`, and `DATABASE_POOL_TIMEOUT`.
+
+PostgreSQL is intended for fresh production databases. Existing SQLite data is
+not migrated automatically; use the normal export/import or migration process
+before switching.
 
 `CORS_ORIGINS` controls the allowed frontend origins. The root `scripts/dev_up.sh`
 sets the local single-port origin by default and can add a public tunnel origin with

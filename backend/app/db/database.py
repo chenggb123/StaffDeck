@@ -1,7 +1,7 @@
-from collections.abc import Callable, Generator
-from contextlib import contextmanager
 import hashlib
 import json
+from collections.abc import Callable, Generator
+from contextlib import contextmanager
 from pathlib import Path
 from urllib.parse import unquote
 
@@ -12,6 +12,10 @@ from app.config import get_settings
 
 
 def _normalize_database_url(url: str) -> str:
+    normalized = url.strip()
+    if normalized.startswith("postgresql://") or normalized.startswith("postgres://"):
+        return "postgresql+psycopg://" + normalized.split("://", 1)[1]
+    url = normalized
     if not url.startswith("sqlite:///") or url.startswith("sqlite:////") or url == "sqlite:///:memory:":
         return url
 
@@ -31,8 +35,39 @@ def _normalize_database_url(url: str) -> str:
 settings = get_settings()
 
 database_url = _normalize_database_url(settings.database_url)
-connect_args = {"check_same_thread": False, "timeout": 30} if database_url.startswith("sqlite") else {}
-engine: Engine = create_engine(database_url, echo=False, connect_args=connect_args)
+_database_backend = database_url.split("://", 1)[0].split("+", 1)[0].lower()
+engine_options: dict[str, object] = {"echo": False, "pool_pre_ping": True}
+if _database_backend == "sqlite":
+    engine_options["connect_args"] = {"check_same_thread": False, "timeout": 30}
+else:
+    engine_options["connect_args"] = {
+        "connect_timeout": settings.database_connect_timeout_seconds,
+    }
+    engine_options["pool_size"] = settings.database_pool_size
+    engine_options["max_overflow"] = settings.database_max_overflow
+    engine_options["pool_timeout"] = settings.database_pool_timeout
+engine: Engine = create_engine(database_url, **engine_options)
+
+
+def database_backend() -> str:
+    return engine.url.get_backend_name()
+
+
+def _mark_migration_applied(conn, migration_id: str) -> None:
+    if database_url.startswith("postgresql"):
+        conn.execute(
+            text(
+                "INSERT INTO app_data_migrations (id) VALUES (:id) "
+                "ON CONFLICT (id) DO NOTHING"
+            ),
+            {"id": migration_id},
+        )
+    else:
+        conn.execute(
+            text("INSERT OR IGNORE INTO app_data_migrations (id) VALUES (:id)"),
+            {"id": migration_id},
+        )
+
 
 _DEFAULT_MODEL_OUTPUT_LIMIT_MIGRATION_ID = "20260712_default_model_output_tokens_8192"
 _LEGACY_DEFAULT_MODEL_OUTPUT_TOKENS = 2048
@@ -75,7 +110,12 @@ def init_db() -> None:
 
     _configure_sqlite_runtime()
     SQLModel.metadata.create_all(engine)
-    _migrate_sqlite_skill_schema()
+    if database_url.startswith("sqlite"):
+        _migrate_sqlite_skill_schema()
+    elif database_url.startswith("postgresql"):
+        _migrate_postgresql_schema()
+    else:
+        raise RuntimeError(f"Unsupported database URL scheme: {database_url}")
 
 
 def _configure_sqlite_runtime() -> None:
@@ -358,6 +398,119 @@ def _migrate_sqlite_skill_schema() -> None:
             _sync_explicit_skill_tool_bindings(conn, tables)
 
 
+def _migrate_postgresql_schema() -> None:
+    inspector = inspect(engine)
+    tables = set(inspector.get_table_names())
+    with engine.begin() as conn:
+        _migrate_capability_scope_schema(conn, inspector, tables)
+        _migrate_harness_v2_schema(conn, inspector, tables)
+        _migrate_postgresql_channel_inbound_run_schema(conn, inspector, tables)
+        _migrate_postgresql_feishu_channel_schema(conn, inspector, tables)
+
+
+def _migrate_postgresql_channel_inbound_run_schema(
+    conn,
+    inspector,
+    tables: set[str],
+) -> None:
+    if "channel_inbound_events" not in tables:
+        return
+    columns = {
+        column["name"] for column in inspector.get_columns("channel_inbound_events")
+    }
+    if "processor_run_id" not in columns:
+        conn.execute(
+            text("ALTER TABLE channel_inbound_events ADD COLUMN processor_run_id VARCHAR")
+        )
+    conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_channel_inbound_events_processor_run_id "
+            "ON channel_inbound_events(processor_run_id)"
+        )
+    )
+
+
+def _migrate_postgresql_feishu_channel_schema(
+    conn,
+    inspector,
+    tables: set[str],
+) -> None:
+    required_tables = {
+        "channel_bindings",
+        "channel_inbound_events",
+        "channel_deliveries",
+    }
+    if not required_tables <= tables:
+        return
+
+    conn.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS app_data_migrations (
+                id VARCHAR PRIMARY KEY,
+                applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+    )
+    binding_columns = {
+        column["name"] for column in inspector.get_columns("channel_bindings")
+    }
+    if "provider_tenant_key" not in binding_columns:
+        conn.execute(
+            text("ALTER TABLE channel_bindings ADD COLUMN provider_tenant_key VARCHAR")
+        )
+    conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_channel_bindings_provider_tenant_key "
+            "ON channel_bindings(provider_tenant_key)"
+        )
+    )
+
+    inbound_columns = {
+        column["name"] for column in inspector.get_columns("channel_inbound_events")
+    }
+    if "config_revision" not in inbound_columns:
+        conn.execute(
+            text(
+                "ALTER TABLE channel_inbound_events ADD COLUMN config_revision "
+                "INTEGER NOT NULL DEFAULT 0"
+            )
+        )
+    if "target_json" not in inbound_columns:
+        conn.execute(
+            text(
+                "ALTER TABLE channel_inbound_events ADD COLUMN target_json "
+                "JSON NOT NULL DEFAULT '{}'"
+            )
+        )
+    if "reaction_id" not in inbound_columns:
+        conn.execute(
+            text("ALTER TABLE channel_inbound_events ADD COLUMN reaction_id VARCHAR")
+        )
+    conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_channel_inbound_events_reaction_id "
+            "ON channel_inbound_events(reaction_id)"
+        )
+    )
+    conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_channel_inbound_events_binding_status_created "
+            "ON channel_inbound_events(binding_id, status, created_at)"
+        )
+    )
+
+    delivery_columns = {
+        column["name"] for column in inspector.get_columns("channel_deliveries")
+    }
+    if "first_attempt_at" not in delivery_columns:
+        conn.execute(
+            text("ALTER TABLE channel_deliveries ADD COLUMN first_attempt_at TIMESTAMP")
+        )
+    _mark_migration_applied(conn, _FEISHU_CHANNEL_SCHEMA_MIGRATION_ID)
+
+
 @contextmanager
 def _sqlite_immediate_connection():
     conn = engine.connect()
@@ -381,7 +534,7 @@ def _migrate_default_model_output_limit(conn, tables: set[str]) -> None:
             """
             CREATE TABLE IF NOT EXISTS app_data_migrations (
                 id VARCHAR PRIMARY KEY,
-                applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """
         )
@@ -408,10 +561,7 @@ def _migrate_default_model_output_limit(conn, tables: set[str]) -> None:
             "legacy_limit": _LEGACY_DEFAULT_MODEL_OUTPUT_TOKENS,
         },
     )
-    conn.execute(
-        text("INSERT INTO app_data_migrations (id) VALUES (:id)"),
-        {"id": _DEFAULT_MODEL_OUTPUT_LIMIT_MIGRATION_ID},
-    )
+    _mark_migration_applied(conn, _DEFAULT_MODEL_OUTPUT_LIMIT_MIGRATION_ID)
 
 
 def _migrate_channel_binding_agents_backfill(conn, tables: set[str]) -> None:
@@ -424,7 +574,7 @@ def _migrate_channel_binding_agents_backfill(conn, tables: set[str]) -> None:
             """
             CREATE TABLE IF NOT EXISTS app_data_migrations (
                 id VARCHAR PRIMARY KEY,
-                applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """
         )
@@ -465,10 +615,7 @@ def _migrate_channel_binding_agents_backfill(conn, tables: set[str]) -> None:
                 "agent_id": row["agent_id"],
             },
         )
-    conn.execute(
-        text("INSERT INTO app_data_migrations (id) VALUES (:id)"),
-        {"id": _CHANNEL_BINDING_AGENTS_BACKFILL_MIGRATION_ID},
-    )
+    _mark_migration_applied(conn, _CHANNEL_BINDING_AGENTS_BACKFILL_MIGRATION_ID)
 
 
 def _migrate_user_source_backfill(conn) -> None:
@@ -478,7 +625,7 @@ def _migrate_user_source_backfill(conn) -> None:
             """
             CREATE TABLE IF NOT EXISTS app_data_migrations (
                 id VARCHAR PRIMARY KEY,
-                applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """
         )
@@ -492,10 +639,7 @@ def _migrate_user_source_backfill(conn) -> None:
     conn.execute(
         text("UPDATE users SET source = 'wechat' WHERE substr(username, 1, 7) = 'wechat_' AND source = 'web'")
     )
-    conn.execute(
-        text("INSERT INTO app_data_migrations (id) VALUES (:id)"),
-        {"id": _USER_SOURCE_BACKFILL_MIGRATION_ID},
-    )
+    _mark_migration_applied(conn, _USER_SOURCE_BACKFILL_MIGRATION_ID)
 
 
 def _wecom_scope_from_config(config: object, binding_id: str) -> str:
@@ -520,7 +664,7 @@ def _migrate_channel_scope_rebuild(conn, inspector, tables: set[str]) -> None:
             """
             CREATE TABLE IF NOT EXISTS app_data_migrations (
                 id VARCHAR PRIMARY KEY,
-                applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """
         )
@@ -831,10 +975,7 @@ def _migrate_channel_scope_rebuild(conn, inspector, tables: set[str]) -> None:
                     {"conv": new_conv, "id": row["id"]},
                 )
 
-    conn.execute(
-        text("INSERT INTO app_data_migrations (id) VALUES (:id)"),
-        {"id": _CHANNEL_SCOPE_REBUILD_MIGRATION_ID},
-    )
+    _mark_migration_applied(conn, _CHANNEL_SCOPE_REBUILD_MIGRATION_ID)
 
 
 def _table_sql_compact(conn, table_name: str) -> str:
@@ -857,7 +998,7 @@ def _migrate_channel_bindings_multi(conn, inspector, tables: set[str]) -> None:
             """
             CREATE TABLE IF NOT EXISTS app_data_migrations (
                 id VARCHAR PRIMARY KEY,
-                applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """
         )
@@ -898,10 +1039,7 @@ def _migrate_channel_bindings_multi(conn, inspector, tables: set[str]) -> None:
                     f"ON channel_bindings ({column})"
                 )
             )
-    conn.execute(
-        text("INSERT INTO app_data_migrations (id) VALUES (:id)"),
-        {"id": _CHANNEL_BINDINGS_MULTI_MIGRATION_ID},
-    )
+    _mark_migration_applied(conn, _CHANNEL_BINDINGS_MULTI_MIGRATION_ID)
 
 
 def _channel_account_key_from_row(channel: str, config: object) -> str | None:
@@ -954,7 +1092,7 @@ def _migrate_feishu_channel_schema(conn, tables: set[str]) -> None:
             """
             CREATE TABLE IF NOT EXISTS app_data_migrations (
                 id VARCHAR PRIMARY KEY,
-                applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """
         )
@@ -1016,12 +1154,7 @@ def _migrate_feishu_channel_schema(conn, tables: set[str]) -> None:
             text("ALTER TABLE channel_deliveries ADD COLUMN first_attempt_at DATETIME")
         )
 
-    conn.execute(
-        text(
-            "INSERT OR IGNORE INTO app_data_migrations (id) VALUES (:id)"
-        ),
-        {"id": _FEISHU_CHANNEL_SCHEMA_MIGRATION_ID},
-    )
+    _mark_migration_applied(conn, _FEISHU_CHANNEL_SCHEMA_MIGRATION_ID)
 
 
 def _migrate_channel_bind_code_constraints(conn, tables: set[str]) -> None:
@@ -1077,7 +1210,7 @@ def _migrate_channel_account_key_schema(conn, tables: set[str]) -> None:
             """
             CREATE TABLE IF NOT EXISTS app_data_migrations (
                 id VARCHAR PRIMARY KEY,
-                applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """
         )
@@ -1168,10 +1301,7 @@ def _migrate_channel_account_key_schema(conn, tables: set[str]) -> None:
         {"id": _CHANNEL_ACCOUNT_KEY_MIGRATION_ID},
     ).first()
     if not applied:
-        conn.execute(
-            text("INSERT INTO app_data_migrations (id) VALUES (:id)"),
-            {"id": _CHANNEL_ACCOUNT_KEY_MIGRATION_ID},
-        )
+        _mark_migration_applied(conn, _CHANNEL_ACCOUNT_KEY_MIGRATION_ID)
 
 
 def _migrate_model_api_protocols(conn, tables: set[str]) -> None:
@@ -1183,7 +1313,7 @@ def _migrate_model_api_protocols(conn, tables: set[str]) -> None:
             """
             CREATE TABLE IF NOT EXISTS app_data_migrations (
                 id VARCHAR PRIMARY KEY,
-                applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """
         )
@@ -1331,12 +1461,7 @@ def _normalize_model_default_rows(conn) -> None:
             """
         )
     )
-    conn.execute(
-        text(
-            "INSERT OR IGNORE INTO app_data_migrations (id) VALUES (:id)"
-        ),
-        {"id": _MODEL_API_PROTOCOLS_MIGRATION_ID},
-    )
+    _mark_migration_applied(conn, _MODEL_API_PROTOCOLS_MIGRATION_ID)
 
 
 def _model_api_protocol_schema_complete(conn, columns: set[str]) -> bool:

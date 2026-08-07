@@ -4,6 +4,7 @@ import logging
 import threading
 import time
 from pathlib import Path
+from tempfile import gettempdir
 from typing import Callable
 
 from sqlalchemy import update
@@ -28,9 +29,16 @@ class FeishuProcessManager:
     ):
         self._engine = db_engine or engine
         database = self._engine.url.database
-        if self._engine.url.get_backend_name() != "sqlite" or not database or database == ":memory:":
-            raise RuntimeError("飞书长连接首版仅支持文件 SQLite")
-        self._database_path = Path(database).expanduser().resolve()
+        if self._engine.url.get_backend_name() == "sqlite" and database and database != ":memory:":
+            self._database_path = Path(database).expanduser().resolve()
+            self._database_url = ""
+            self._data_dir = None
+        else:
+            self._database_path = (
+                Path(gettempdir()) / "staffdeck-feishu" / "connector-lock"
+            )
+            self._database_url = str(self._engine.url)
+            self._data_dir = self._database_path.parent
         self._supervisor_factory = supervisor_factory
         self._supervisor: FeishuProcessSupervisor | None = None
         self._reconcile_seconds = reconcile_seconds
@@ -45,7 +53,11 @@ class FeishuProcessManager:
     def _get_supervisor(self) -> FeishuProcessSupervisor:
         with self._lock:
             if self._supervisor is None:
-                self._supervisor = self._supervisor_factory(database_path=self._database_path)
+                self._supervisor = self._supervisor_factory(
+                    database_path=self._database_path,
+                    database_url=self._database_url or None,
+                    data_dir=self._data_dir,
+                )
             return self._supervisor
 
     def start(self) -> None:

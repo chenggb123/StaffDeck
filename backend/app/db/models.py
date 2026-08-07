@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from typing import Any, Optional
 from uuid import uuid4
 
-from sqlalchemy import Column, Index, Integer, JSON, UniqueConstraint
+from sqlalchemy import JSON, Column, Index, Integer, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 
@@ -546,6 +546,14 @@ class MockOrder(SQLModel, table=True):
 
 class ChatSession(SQLModel, table=True):
     __tablename__ = "sessions"
+    __table_args__ = (
+        Index(
+            "ix_sessions_tenant_user_updated",
+            "tenant_id",
+            "user_id",
+            "updated_at",
+        ),
+    )
 
     id: str = Field(primary_key=True)
     tenant_id: str = Field(index=True)
@@ -726,6 +734,13 @@ class ChannelInboundEvent(SQLModel, table=True):
 
 class ChannelDelivery(SQLModel, table=True):
     __tablename__ = "channel_deliveries"
+    __table_args__ = (
+        Index(
+            "ix_channel_deliveries_status_next_attempt",
+            "status",
+            "next_attempt_at",
+        ),
+    )
 
     id: str = Field(default_factory=lambda: new_id("chdlv"), primary_key=True)
     tenant_id: str = Field(index=True)
@@ -989,6 +1004,14 @@ class HarnessInvocationRecord(SQLModel, table=True):
 
 class Message(SQLModel, table=True):
     __tablename__ = "messages"
+    __table_args__ = (
+        Index(
+            "ix_messages_tenant_session_created",
+            "tenant_id",
+            "session_id",
+            "created_at",
+        ),
+    )
 
     id: str = Field(default_factory=lambda: new_id("msg"), primary_key=True)
     tenant_id: str = Field(index=True)
@@ -1039,6 +1062,14 @@ class SkillFeedback(SQLModel, table=True):
 
 class AgentEvent(SQLModel, table=True):
     __tablename__ = "agent_events"
+    __table_args__ = (
+        Index(
+            "ix_agent_events_tenant_session_created",
+            "tenant_id",
+            "session_id",
+            "created_at",
+        ),
+    )
 
     id: str = Field(default_factory=lambda: new_id("evt"), primary_key=True)
     tenant_id: str = Field(index=True)
@@ -1050,6 +1081,14 @@ class AgentEvent(SQLModel, table=True):
 
 class MemoryRecord(SQLModel, table=True):
     __tablename__ = "memories"
+    __table_args__ = (
+        Index(
+            "ix_memories_tenant_user_updated",
+            "tenant_id",
+            "user_id",
+            "updated_at",
+        ),
+    )
 
     id: str = Field(default_factory=lambda: new_id("mem"), primary_key=True)
     tenant_id: str = Field(index=True)

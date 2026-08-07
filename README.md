@@ -13,7 +13,7 @@ StaffDeck is an enterprise platform for building and managing digital employees.
 
 ## Tech Stack
 
-- Backend: Python 3.11+, FastAPI, SQLModel, SQLite
+- Backend: Python 3.11+, FastAPI, SQLModel, SQLite (default) / PostgreSQL
 - Frontend: React 18, TypeScript, Vite, Tailwind CSS
 - Runtime: single-port FastAPI app for desktop and local deployments
 
@@ -57,6 +57,26 @@ DEMO_MODEL_API_KEY="your-api-key"
 The default administrator is `admin` / `admin`. Change the password after the first login.
 
 Open [http://127.0.0.1:5173/workspace/gallery](http://127.0.0.1:5173/workspace/gallery) and start a conversation.
+
+## PostgreSQL Deployment
+
+SQLite remains the default for desktop and single-user deployments. For a team deployment targeting hundreds or thousands of users, use PostgreSQL:
+
+```dotenv
+DATABASE_URL="postgresql+psycopg://staffdeck:change-me@postgres:5432/staffdeck"
+DATABASE_POOL_SIZE="10"
+DATABASE_MAX_OVERFLOW="30"
+DATABASE_POOL_TIMEOUT="30"
+DATABASE_CONNECT_TIMEOUT_SECONDS="10"
+```
+
+The repository includes a ready-to-run PostgreSQL compose stack:
+
+```bash
+docker compose -f docker-compose.postgres.yml up -d --build
+```
+
+PostgreSQL startup auto-creates the current schema. The connector lock is implemented with PostgreSQL advisory locks, and Feishu connector child processes can use the same PostgreSQL database URL. For multiple web workers, run API workers with `STAFFDECK_ROLE="web"` and one connector worker with `STAFFDECK_ROLE="connector"`; a single-process deployment keeps `STAFFDECK_ROLE="all"`.
 
 ## Role & Permission Management
 

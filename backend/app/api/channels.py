@@ -66,6 +66,7 @@ from app.channels.service_session import (
 )
 from app.config import get_settings
 from app.db import get_session
+from app.db.database import database_backend
 from app.db.models import (
     AgentProfile,
     ChannelBindCode,
@@ -1178,8 +1179,15 @@ def list_channel_delivery_days(
     _ensure_binding_manager(db, tenant_id, binding, current_user)
     from sqlalchemy import func
 
-    # 按服务器本地时区的自然日分桶(SQLite date(created_at, 'localtime'))
-    day_bucket = func.date(ChannelDelivery.created_at, "localtime")
+    if database_backend() == "sqlite":
+        day_bucket = func.date(ChannelDelivery.created_at, "localtime")
+    else:
+        day_bucket = func.date(
+            func.timezone(
+                "Asia/Shanghai",
+                func.timezone("UTC", ChannelDelivery.created_at),
+            )
+        )
     day_rows = db.exec(
         select(day_bucket, func.count())
         .where(ChannelDelivery.binding_id == binding.id)

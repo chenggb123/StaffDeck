@@ -13,9 +13,9 @@ from pathlib import Path
 from typing import Any
 
 from feishu_connector_worker import (
+    PRODUCTION_RUNTIME,
     BindingProcessLock,
     ConnectorChildSpec,
-    PRODUCTION_RUNTIME,
     binding_lock_path,
     connector_child_entry,
 )
@@ -53,6 +53,7 @@ class FeishuProcessSupervisor:
         *,
         runtime_path: str = PRODUCTION_RUNTIME,
         database_path: Path | None = None,
+        database_url: str | None = None,
         data_dir: Path | None = None,
         watchdog_seconds: float = 2.5,
         terminate_grace_seconds: float = 0.2,
@@ -69,6 +70,7 @@ class FeishuProcessSupervisor:
         self._runtime_path = runtime_path
         root = (data_dir or Path.cwd()).expanduser().resolve()
         self._database_path = (database_path or root / "skill_agent_loop.db").expanduser().resolve()
+        self._database_url = (database_url or "").strip()
         self._watchdog_seconds = watchdog_seconds
         self._terminate_grace_seconds = terminate_grace_seconds
         self._max_processes = max_processes
@@ -172,6 +174,7 @@ class FeishuProcessSupervisor:
             runtime_path=self._runtime_path,
             binding_lock_path=str(lock_path),
             database_path=str(self._database_path),
+            database_url=self._database_url,
             watchdog_seconds=self._watchdog_seconds,
         )
         process = self._ctx.Process(

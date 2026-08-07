@@ -105,6 +105,7 @@ class ConnectorChildSpec:
     runtime_path: str
     binding_lock_path: str
     database_path: str = ""
+    database_url: str = ""
     watchdog_seconds: float = 2.5
 
 
