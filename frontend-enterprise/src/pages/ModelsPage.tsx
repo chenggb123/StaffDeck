@@ -222,7 +222,10 @@ export default function ModelsPage({
       } else {
         saved = await api.post<ModelConfigRead>('/api/enterprise/model-configs', payload);
       }
-      let completed = true;
+      setEditorOpen(false);
+      setSelected(null);
+      setForm(BLANK_MODEL_FORM);
+      await load();
       if (form.enabled) {
         const verified = await test(saved);
         if (verified) {
@@ -232,15 +235,12 @@ export default function ModelsPage({
             is_default: form.is_default,
           });
           notify.success(form.is_default ? '测试通过，已启用并设为默认模型' : '测试通过，已启用');
-        } else completed = false;
+        } else {
+          notify.warning('配置已保存，但模型测试未通过，暂未启用。');
+        }
       } else {
         notify.success('已保存');
       }
-      if (!completed) return;
-      setEditorOpen(false);
-      setSelected(null);
-      setForm(BLANK_MODEL_FORM);
-      await load();
     } catch (error) {
       notify.error(modelActionError(error, '保存失败'));
     } finally {

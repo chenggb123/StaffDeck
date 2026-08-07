@@ -2157,5 +2157,7 @@
   "密码需要包含数字": "Password must contain a digit",
   "密码需要包含特殊字符": "Password must contain a special character",
   "至少8位，包含大小写字母、数字和特殊字符": "At least 8 characters with uppercase, lowercase, digits, and special characters",
-  "留空不修改；至少8位，包含大小写字母、数字和特殊字符": "Leave blank to keep unchanged; at least 8 characters with uppercase, lowercase, digits, and special characters"
+  "留空不修改；至少8位，包含大小写字母、数字和特殊字符": "Leave blank to keep unchanged; at least 8 characters with uppercase, lowercase, digits, and special characters",
+  "测试通过，已启用": "Test passed. Enabled",
+  "配置已保存，但模型测试未通过，暂未启用。": "Saved, but the model test failed and the model is not enabled yet."
 }

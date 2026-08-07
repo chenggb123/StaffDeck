@@ -21,11 +21,6 @@ import {
   type EnterpriseAuthUser,
 } from "./auth";
 import AppSidebar from "./components/AppSidebar";
-import OnboardingGuide, { ONBOARDING_SEEN_KEY } from "./components/OnboardingGuide";
-import QuickStartGuide, {
-  QUICK_START_COMPLETED_EVENT,
-  QUICK_START_SEEN_KEY,
-} from "./components/QuickStartGuide";
 import StaffdeckIcon from "./components/StaffdeckIcon";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { EnterpriseRoute } from "./enums/routes";
@@ -144,10 +139,7 @@ function Shell({
     useState<AgentCreateFormState>(EMPTY_AGENT_FORM);
   const [modelConfigs, setModelConfigs] = useState<ModelConfigRead[]>([]);
   const [modelConfigsLoaded, setModelConfigsLoaded] = useState(false);
-  const [guidesCompleted, setGuidesCompleted] = useState(() => Boolean(
-    window.localStorage.getItem(ONBOARDING_SEEN_KEY)
-    && window.localStorage.getItem(QUICK_START_SEEN_KEY),
-  ));
+  const guidesCompleted = true;
   const isMobile = useIsMobile();
   const isAdmin = isEnterpriseAdmin(auth.user);
   const accountRoleLabel = isAdmin ? "管理员" : "";
@@ -218,12 +210,6 @@ function Shell({
     window.addEventListener(MODEL_CONFIGS_UPDATED_EVENT, onModelConfigsUpdated);
     return () => window.removeEventListener(MODEL_CONFIGS_UPDATED_EVENT, onModelConfigsUpdated);
   }, [loadModelConfigs]);
-
-  useEffect(() => {
-    const onQuickStartCompleted = () => setGuidesCompleted(true);
-    window.addEventListener(QUICK_START_COMPLETED_EVENT, onQuickStartCompleted);
-    return () => window.removeEventListener(QUICK_START_COMPLETED_EVENT, onQuickStartCompleted);
-  }, []);
 
   // Auto-collapse the sidebar on small screens; restore the saved preference on desktop.
   useEffect(() => {
@@ -1028,10 +1014,6 @@ export default function App() {
             }
           />
         </Routes>
-        {auth && authChecked ? <OnboardingGuide /> : null}
-        {auth && authChecked && hasAnyEnterpriseManagementPermission(auth.user) ? (
-          <QuickStartGuide isAdmin={isEnterpriseAdmin(auth.user)} />
-        ) : null}
       </BrowserRouter>
       <Toaster richColors closeButton position="top-center" />
     </TooltipProvider>
