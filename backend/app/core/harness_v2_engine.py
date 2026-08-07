@@ -167,6 +167,26 @@ class HarnessV2Engine:
             session, model_config=model_config
         )
 
+        quick_response = self._try_channel_quick_reply(
+            request,
+            session,
+            model_config,
+            memory_context,
+            conversation_context,
+        )
+        if quick_response is not None:
+            self.db.commit()
+            self.db.refresh(session)
+            self.owner._enqueue_memory_capture(
+                request,
+                session,
+                quick_response.step_result,
+                None,
+                model_config,
+            )
+            self.turn_store.complete(self.turn_record, quick_response)
+            return quick_response
+
         self._renew_session_lease()
         plan = self.planner.plan(
             request.message,
@@ -451,6 +471,118 @@ class HarnessV2Engine:
         )
         self.turn_store.complete(self.turn_record, response)
         return response
+
+    def _try_channel_quick_reply(
+        self,
+        request: ChatTurnRequest,
+        session: ChatSession,
+        model_config: Any,
+        memory_context: list[dict[str, object]],
+        conversation_context: dict[str, object],
+    ) -> ChatTurnResponse | None:
+        if not self._can_use_channel_quick_reply(request, session):
+            return None
+        router_decision = RouterDecision(
+            decision="answer_only",
+            reason="channel_quick_reply",
+        )
+        step_result = StepAgentResult(action="reply")
+        reply = self.owner.response_generator.generate(
+            request.message,
+            session,
+            None,
+            router_decision,
+            step_result,
+            None,
+            model_config,
+            self.owner._get_persona_prompt(request.tenant_id, session.agent_id),
+            memory_context,
+            conversation_context,
+        )
+        reply, _citations = compact_knowledge_citation_labels(reply, [])
+        metadata: dict[str, Any] = {"execution_engine": "channel_quick_reply"}
+        if request.client_turn_id:
+            metadata["client_turn_id"] = request.client_turn_id
+        reply = self.owner._finalize_turn(
+            session,
+            request.tenant_id,
+            reply,
+            step_result,
+            request.message,
+            user_message_id=self.user_message_id,
+            assistant_metadata_override=metadata,
+        )
+        self.db.commit()
+        return ChatTurnResponse(
+            reply=reply,
+            session_id=session.id,
+            router_decision=router_decision,
+            step_result=step_result,
+            tool_result=None,
+            session_state=public_session(session),
+        )
+
+    @staticmethod
+    def _can_use_channel_quick_reply(
+        request: ChatTurnRequest,
+        session: ChatSession,
+    ) -> bool:
+        if request.channel != "wecom":
+            return False
+        if (
+            session.active_skill_id
+            or session.active_step_id
+            or session.pending_tasks_json
+            or session.awaiting_input_json
+            or session.resume_after_answer_json
+        ):
+            return False
+        message = (request.message or "").strip()
+        if not message or len(message) > 80:
+            return False
+        lowered = message.lower()
+        blocked_terms = (
+            "工单",
+            "创建",
+            "新建",
+            "提交",
+            "申请",
+            "查询",
+            "搜索",
+            "故障",
+            "报修",
+            "账号",
+            "权限",
+            "设备",
+            "网络",
+            "软件",
+            "硬件",
+            "安装",
+            "删除",
+            "修改",
+            "切换",
+            "绑定",
+            "开通",
+            "关闭",
+            "开启",
+            "工号",
+            "密码",
+            "邮箱",
+            "vpn",
+            "打印",
+            "会议",
+            "测试",
+            "report",
+            "create",
+            "submit",
+            "request",
+            "search",
+            "query",
+            "install",
+            "delete",
+            "update",
+        )
+        return not any(term in message or term in lowered for term in blocked_terms)
 
     def close(self) -> None:
         session_id = str(self._session_lock_id or "")
