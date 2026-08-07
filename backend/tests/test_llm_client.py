@@ -69,6 +69,7 @@ def test_llm_client_uses_600_second_timeout(monkeypatch):
 
     assert client.timeout_seconds == 600.0
     assert captured["timeout"] == 600.0
+    assert captured["max_retries"] == 0
     assert captured["base_url"] == "https://example.test/v1"
     assert client.extra_body == {
         "thinking": {"type": "disabled"},
