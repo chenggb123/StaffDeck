@@ -38,7 +38,7 @@ class LLMError(Exception):
     """Raised when an LLM provider request or response normalization fails."""
 
 
-JSON_REPAIR_ATTEMPTS = 3
+JSON_REPAIR_ATTEMPTS = 1
 EMPTY_RESPONSE_RETRIES = 2
 EMPTY_RESPONSE_MESSAGE = "Model returned an empty response"
 DEFAULT_MODEL_API_TIMEOUT_SECONDS = 600.0

@@ -1040,10 +1040,10 @@ def test_generate_json_repairs_trailing_commas_and_string_newlines(monkeypatch):
     assert client.generate_json("prompt", {}) == {"ok": True, "reason": "第一行\n第二行"}
 
 
-def test_generate_json_allows_multiple_repair_attempts(monkeypatch):
+def test_generate_json_allows_one_repair_attempt(monkeypatch):
     client = object.__new__(LLMClient)
     payloads = []
-    calls = iter(["not json", '{"reason": "用户称呼为"', '{"ok": true}'])
+    calls = iter(["not json", '{"ok": true}'])
 
     def fake_generate_text(_system_prompt, payload):
         payloads.append(payload)
@@ -1053,8 +1053,7 @@ def test_generate_json_allows_multiple_repair_attempts(monkeypatch):
 
     assert client.generate_json("prompt", {"query": "你好"}) == {"ok": True}
     assert payloads[1]["_json_repair"]["attempt"] == 1
-    assert payloads[2]["_json_repair"]["attempt"] == 2
-    assert "parser_error" in payloads[2]["_json_repair"]
+    assert "parser_error" in payloads[1]["_json_repair"]
 
 
 # --- Reasoning-model length-truncation token escalation regression tests ---

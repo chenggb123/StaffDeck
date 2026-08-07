@@ -48,6 +48,7 @@ from app.core.task_request_compiler import (
     TaskRequestCompiler,
     TaskRequirement,
 )
+from app.llm import LLMError
 from app.core.turn_planner import TurnPlanner
 from app.db.models import (
     AgentProfile,
@@ -284,27 +285,13 @@ def test_turn_plan_defaults_null_container_fields() -> None:
     assert plan.task_frames[0].depends_on_task_ids == []
 
 
-def test_turn_planner_retries_schema_invalid_json(monkeypatch) -> None:
+def test_turn_planner_rejects_schema_invalid_json_without_retry(monkeypatch) -> None:
     payloads: list[dict[str, object]] = []
     outputs = iter(
         [
             {
                 "decision": "answer_only",
                 "task_frames": [{"kind": "not-a-kind"}],
-            },
-            {
-                "decision": "answer_only",
-                "user_intent": "打招呼",
-                "task_frames": [
-                    {
-                        "kind": "conversation",
-                        "decision": "answer_only",
-                        "requirements": ["友好回复用户问候"],
-                        "slot_hints": {},
-                        "depends_on_task_ids": [],
-                    }
-                ],
-                "task_updates": [],
             },
         ]
     )
@@ -321,32 +308,17 @@ def test_turn_planner_retries_schema_invalid_json(monkeypatch) -> None:
 
     monkeypatch.setattr(turn_planner_module, "LLMClient", FakeLLMClient)
 
-    plan = TurnPlanner().plan(
-        "你好",
-        _chat_session(),
-        available_skills=[],
-        model_config=_model_config(),
-    )
+    with pytest.raises(LLMError, match="invalid JSON schema"):
+        TurnPlanner().plan(
+            "你好",
+            _chat_session(),
+            available_skills=[],
+            model_config=_model_config(),
+        )
 
-    assert len(payloads) == 2
+    assert len(payloads) == 1
     assert "available_sops" in payloads[0]
     assert "available_skills" not in payloads[0]
-    repair = payloads[1]["_schema_repair"]
-    assert isinstance(repair, dict)
-    assert repair["previous_output"] == {
-        "decision": "answer_only",
-        "task_frames": [{"kind": "not-a-kind"}],
-    }
-    assert repair["validation_errors"] == [
-        {
-            "path": "task_frames.0.kind",
-            "type": "literal_error",
-            "message": "Input should be 'sop' or 'conversation'",
-        }
-    ]
-    assert len(plan.task_frames) == 1
-    assert plan.task_frames[0].kind == "conversation"
-    assert plan.task_frames[0].slot_hints == {}
 
 
 def test_turn_planner_exposes_sops_but_not_runtime_capabilities(monkeypatch) -> None:

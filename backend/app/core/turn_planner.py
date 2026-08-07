@@ -33,7 +33,7 @@ from app.session.slot_policy import strip_router_generated_message_slots
 PROMPT_PATH = (
     paths.resource_dir() / "app" / "llm" / "prompts" / "turn_planner_prompt.md"
 )
-SCHEMA_REPAIR_ATTEMPTS = 1
+SCHEMA_REPAIR_ATTEMPTS = 0
 
 
 class TurnPlanner:
