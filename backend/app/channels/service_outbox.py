@@ -34,7 +34,12 @@ SENDING_STALE_SECONDS = 120
 _delivery_thread: threading.Thread | None = None
 _reaction_delivery_thread: threading.Thread | None = None
 _delivery_stop = threading.Event()
+_delivery_wake = threading.Event()
 _FEISHU_DEDUP_RECOVERY_SECONDS = 55 * 60
+
+
+def wake_delivery_daemon() -> None:
+    _delivery_wake.set()
 
 
 def _stage_failed_delivery(
@@ -216,6 +221,7 @@ def stage_channel_delivery(db: Session, chat_session: ChatSession, message: Mess
                 idempotency_key=message.id,
             )
         )
+        wake_delivery_daemon()
     except Exception:
         logger.exception("渠道投递登记失败 session=%s", getattr(chat_session, "id", None))
         if getattr(chat_session, "channel", None):
@@ -699,7 +705,9 @@ def _run_delivery_lane(
             logger.exception("渠道投递守护轮询失败")
         if once or _delivery_stop.is_set():
             return
-        if _delivery_stop.wait(max(0.2, interval)):
+        if _delivery_wake.wait(max(0.2, interval)):
+            _delivery_wake.clear()
+        if _delivery_stop.is_set():
             return
 
 
@@ -727,6 +735,7 @@ def start_delivery_daemon(*, db_engine=None) -> None:
 def stop_delivery_daemon(timeout_seconds: float = 5.0) -> bool:
     global _delivery_thread, _reaction_delivery_thread
     _delivery_stop.set()
+    _delivery_wake.set()
     threads = [_delivery_thread, _reaction_delivery_thread]
     deadline = utc_now() + timedelta(seconds=max(0.0, timeout_seconds))
     for thread in threads:

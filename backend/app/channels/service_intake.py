@@ -940,6 +940,9 @@ def process_inbound(
             _send_wechat_typing(binding, inbound.from_user_id, inbound.context_token, 1, db_engine=use_engine)
             try:
                 AgentLoop(db).handle_turn(request)
+                from app.channels.service_outbox import wake_delivery_daemon
+
+                wake_delivery_daemon()
             except Exception as exc:
                 logger.exception("渠道入站处理失败 binding=%s event=%s", binding.id, inbound.event_id)
                 db.rollback()
