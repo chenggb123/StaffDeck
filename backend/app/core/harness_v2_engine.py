@@ -53,6 +53,7 @@ from app.session.helpers import public_session
 from app.session.session_schema import (
     ChatTurnRequest,
     ChatTurnResponse,
+    RouterDecision,
     StepAgentResult,
     TurnPlan,
 )
