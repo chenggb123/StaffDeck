@@ -347,6 +347,7 @@ export function useChatSession(options: UseChatSessionOptions = {}) {
   const [queuedTurnsTick, setQueuedTurnsTick] = useState(0);
   const [expandedTraceIds, setExpandedTraceIds] = useState<string[]>([]);
   const [collapsedTraceIds, setCollapsedTraceIds] = useState<string[]>([]);
+  const [autoCollapsedTraceIds, setAutoCollapsedTraceIds] = useState<string[]>([]);
   const [scheduledDrafts, setScheduledDrafts] = useState<Record<string, ScheduledTaskDraftRead>>({});
   const [createdScheduledTasks, setCreatedScheduledTasks] = useState<Record<string, ScheduledTaskRead>>({});
   const [dismissedDraftMessageIds, setDismissedDraftMessageIds] = useState<string[]>([]);
@@ -750,10 +751,14 @@ export function useChatSession(options: UseChatSessionOptions = {}) {
   const toggleTrace = useCallback((turnId: string, isExpanded = false) => {
     if (isExpanded) {
       setCollapsedTraceIds((current) => (current.includes(turnId) ? current : [...current, turnId]));
+      setAutoCollapsedTraceIds((current) => (
+        current.includes(turnId) ? current : [...current, turnId]
+      ));
       setExpandedTraceIds((current) => current.filter((item) => item !== turnId));
       return;
     }
     setCollapsedTraceIds((current) => current.filter((item) => item !== turnId));
+    setAutoCollapsedTraceIds((current) => current.filter((item) => item !== turnId));
     setExpandedTraceIds((current) => (
       current.includes(turnId) ? current : [...current, turnId]
     ));
@@ -920,6 +925,11 @@ export function useChatSession(options: UseChatSessionOptions = {}) {
     });
     setCollapsedTraceIds((current) => (
       current.includes(fromTurnId) ? current.map((item) => (item === fromTurnId ? toTurnId : item)) : current
+    ));
+    setAutoCollapsedTraceIds((current) => (
+      current.includes(fromTurnId)
+        ? current.map((item) => (item === fromTurnId ? toTurnId : item))
+        : current
     ));
     notifyTrace();
   }, [notifyTrace]);
@@ -1900,6 +1910,9 @@ export function useChatSession(options: UseChatSessionOptions = {}) {
         setCollapsedTraceIds((current) => (
           current.includes(id) ? current : [...current, id]
         ));
+        setAutoCollapsedTraceIds((current) => (
+          current.includes(id) ? current : [...current, id]
+        ));
         setExpandedTraceIds((current) => current.filter((item) => item !== id));
       }
     };
@@ -2790,6 +2803,7 @@ export function useChatSession(options: UseChatSessionOptions = {}) {
     });
     upsertTraceLine(turnId, { id: 'decision_router', kind: 'decision', text: '判断意图', state: 'running', icon: 'judge', provisional: true });
     setCollapsedTraceIds((current) => current.filter((item) => item !== turnId));
+    setAutoCollapsedTraceIds((current) => current.filter((item) => item !== turnId));
     setExpandedTraceIds((current) => (current.includes(turnId) ? current : [...current, turnId]));
     stream.loading = true;
     stream.phase = '正在思考';
@@ -3322,6 +3336,7 @@ export function useChatSession(options: UseChatSessionOptions = {}) {
     uiConfig,
     expandedTraceIds,
     collapsedTraceIds,
+    autoCollapsedTraceIds,
     toggleTrace,
     currentStream,
     runningTurn,

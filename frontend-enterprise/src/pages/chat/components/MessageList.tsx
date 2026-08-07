@@ -33,6 +33,7 @@ export default function MessageList({ chat }: { chat: UseChatSession }) {
     runningTurn,
     expandedTraceIds,
     collapsedTraceIds,
+    autoCollapsedTraceIds,
     isCurrentStreamingTrace,
     dismissedDraftMessageIds,
     createdScheduledTasks,
@@ -102,8 +103,10 @@ export default function MessageList({ chat }: { chat: UseChatSession }) {
             || (!toolExecutionCompleted && latestAssistantTrace && recentlyStartedTrace),
           );
           const manuallyCollapsed = collapsedTraceIds.includes(traceTurnId);
+          const autoCollapsed = autoCollapsedTraceIds.includes(traceTurnId);
           const expanded = Boolean(
             !manuallyCollapsed
+            && !autoCollapsed
             && (expandedTraceIds.includes(traceTurnId) || defaultExpanded),
           );
           const rawVisibleContent = staffdeckDisplayText(
