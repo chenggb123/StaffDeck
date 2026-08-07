@@ -92,10 +92,11 @@ export default function MessageList({ chat }: { chat: UseChatSession }) {
             trace?.startedAt && Date.now() - trace.startedAt <= CHAT_TRACE_RECOVERY_WINDOW_MS,
           );
           const toolExecutionCompleted = details.some(
-            (line) => line.kind === 'tool' && line.state === 'completed',
+            (line) => line.kind === 'tool'
+              && (line.state === 'completed' || line.state === 'failed'),
           );
           const defaultExpanded = Boolean(
-            traceActive
+            (traceActive && !toolExecutionCompleted)
             || (summaryForRender?.state === 'running' && !toolExecutionCompleted)
             || (traceOnlyMessage && !toolExecutionCompleted)
             || (!toolExecutionCompleted && latestAssistantTrace && recentlyStartedTrace),
